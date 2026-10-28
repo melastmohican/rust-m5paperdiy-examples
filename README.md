@@ -4,6 +4,18 @@ Rust examples for the **M5Stack PaperDIY** (ESP32-S3, 4.7" ED047TC1 960 x 540 e-
 16 grays, two buttons, microSD, M5PM1 power chip), built on the
 [`epdpi`](../epdpi) driver. Each file in `examples/` is a complete `no_std` image.
 
+## Hello M5PaperDIY!
+
+`src/main.rs` is the smallest real program: it shows "Hello M5PaperDIY!" in the middle of the
+screen and stops.
+
+```bash
+cargo run --release
+```
+
+It is the quickest check that a board, cable and toolchain work. If nothing appears, run the
+`epdpi_*` diagnostics below in order.
+
 ## Two kinds of example
 
 | Prefix | Purpose | Status |
@@ -15,9 +27,12 @@ Rust examples for the **M5Stack PaperDIY** (ESP32-S3, 4.7" ED047TC1 960 x 540 e-
 
 ```bash
 cargo run --release --example epdpi_pmic_probe      # flash and monitor via espflash
-cargo build --release --examples                    # build everything
-cargo clippy --examples --workspace -- -D warnings  # CI lint
+cargo build --release --bins --examples             # build everything
+cargo clippy --bins --examples --workspace -- -D warnings  # CI lint
 ```
+
+Dependencies: `[dependencies]` holds only what the library and `src/main.rs` need. Anything
+an example alone needs (SD card, font crates, image decoders) goes in `[dev-dependencies]`.
 
 Requirements: the `esp` toolchain from `espup` (`rustup toolchain list` should show `esp`)
 and `espflash`. Always build with `--release`: the PSRAM heap and the bus are far too slow in
@@ -126,6 +141,7 @@ refresh).
 
 ## Layout
 
+- `src/main.rs`: the `Hello M5PaperDIY!` program.
 - `examples/epdpi_*.rs`: library diagnostics.
 - `src/lib.rs`: pin map, `init!` (PSRAM heap), `display_pins!`, `pmic_i2c!`, the `pmic`
   module, `fast_bus::FastBus`, and a panic handler.

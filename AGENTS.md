@@ -6,14 +6,20 @@ Layout mirrors `../rust-reterminal-e1002-examples`.
 ## Commands
 
 ```bash
-cargo build --release --examples
-cargo clippy --examples --workspace -- -D warnings
+cargo build --release --bins --examples
+cargo clippy --bins --examples --workspace -- -D warnings
 cargo fmt --all -- --check
 cargo run --release --example <name>     # flash + monitor, needs the board
 ```
 
 Needs the `esp` toolchain (`rustup toolchain list`). A build failure on a clean machine is
 usually a missing toolchain, not code.
+
+## Dependencies
+
+`[dependencies]` is only for the library (`src/lib.rs`) and `src/main.rs` (Hello M5PaperDIY!).
+Anything an example alone needs goes in `[dev-dependencies]`. Do not grow the main program's
+dependency set for an example's sake.
 
 ## Naming
 

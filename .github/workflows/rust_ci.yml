@@ -22,11 +22,11 @@ jobs:
       matrix:
         action:
           - command: build
-            args: --examples --release
+            args: --bins --examples --release
           - command: fmt
             args: --all -- --check
           - command: clippy
-            args: --examples --workspace -- -D warnings
+            args: --bins --examples --workspace -- -D warnings
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
