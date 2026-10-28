@@ -93,7 +93,7 @@ These cost time to find. They are recorded here so the next person does not repe
   `epdpi_timing` shows that the width of the CL pulse did not matter.
 - **Row time matters for grays.** The 16-gray waveform matrix assumes a row near 16 us. The
   portable bus takes about 250 us per row, which saturates the mid grays. `FastBus`
-  (`src/lib.rs`) writes the data pins through the ESP32-S3 GPIO set and clear registers and
+  (`epdpi::fast_bus`, feature `esp32s3`) writes the data pins through the ESP32-S3 GPIO set and clear registers and
   gives a smooth ramp. It is used by `epdpi_clear`, `epdpi_gray_ramp`, `epdpi_text` and
   `epdpi_fast_mono`.
 - **PSRAM is required.** The two 4 bits per pixel buffers are 259,200 bytes each. The chip
@@ -144,7 +144,7 @@ refresh).
 - `src/main.rs`: the `Hello M5PaperDIY!` program.
 - `examples/epdpi_*.rs`: library diagnostics.
 - `src/lib.rs`: pin map, `init!` (PSRAM heap), `display_pins!`, `pmic_i2c!`, the `pmic`
-  module, `fast_bus::FastBus`, and a panic handler.
+  module, the `FastBus` type alias, and a panic handler.
 - `build.rs`, `.cargo/config.toml`, `rust-toolchain.toml`: Xtensa build setup copied from
   `rust-reterminal-e1002-examples`.
 
