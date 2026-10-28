@@ -1,0 +1,36 @@
+[package]
+edition      = "2024"
+name         = "rust-m5paperdiy-examples"
+rust-version = "1.88"
+version      = "0.1.0"
+license      = "MIT OR Apache-2.0"
+description  = "Hardware bring-up examples for the epdpi driver on the M5Stack PaperDIY (ESP32-S3, ED047TC1 e-paper)"
+keywords     = ["esp32s3", "epaper", "embedded", "m5stack", "paperdiy"]
+categories   = ["embedded", "no-std"]
+
+[dependencies]
+esp-hal = { version = "~1.1.0", features = ["defmt", "esp32s3", "unstable"] }
+esp-alloc = { version = "0.9.0", features = ["defmt", "esp32s3"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["defmt", "esp32s3"] }
+esp-println = { version = "0.17.0", features = ["defmt-espflash", "esp32s3"] }
+
+defmt             = "1.0.1"
+critical-section  = "1.2.0"
+embedded-graphics = "0.8.1"
+embedded-hal      = "1.0.0"
+
+# Sibling checkout. Blocking API on purpose: the bit-banged bus needs microsecond delays,
+# which `esp_hal::delay::Delay` gives and an async timer does not.
+epdpi = { path = "../epdpi", features = ["defmt"] }
+
+# For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
+[profile.dev]
+# The default debug profile is too slow and too big for resource-constrained devices.
+# Always build with some optimizations enabled.
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1     # LLVM can perform better optimizations using a single thread
+debug         = 2     # prefer slower builds but better debugging experience
+lto           = 'fat'
+opt-level     = 's'
