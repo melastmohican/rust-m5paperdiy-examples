@@ -20,7 +20,7 @@ It is the quickest check that a board, cable and toolchain work. If nothing appe
 
 | Prefix | Purpose | Status |
 | :--- | :--- | :--- |
-| `epdpi_*` | Basic diagnostics for the `epdpi` library. They prove each layer of the driver on real hardware. | 9 examples, all working |
+| `epdpi_*` | Basic diagnostics for the `epdpi` library. They prove each layer of the driver on real hardware. | 14 examples, all working |
 | no prefix | Real board examples, ports of the Arduino sketches in `~/Src/Arduino/M5PaperDIY` | planned, see [Porting plan](#porting-plan) |
 
 ## Run
@@ -60,6 +60,11 @@ Written to find the bus sequence that works. Keep them for the next board or pan
 | `epdpi_pmic_dump` | Read-only dump of the M5PM1 registers, to diff a working state against a cold start |
 | `epdpi_polarity` | Darken-only then lighten-only through the portable bus, no waveform engine |
 | `epdpi_timing` | M5GFX's line sequence on raw pins with three clock widths |
+| `epdpi_row_time` | Microseconds per row on `FastBus`: bus write, scanline build, whole row |
+| `epdpi_timing_bands` | One refresh with four CKV pulse lengths in horizontal bands, to see which drives best |
+| `epdpi_gray_ramp_m5` | The ramp with `RefreshMode::M5Quality` (M5GFX's waveform) over `FastBus` |
+| `epdpi_lcd_row_time` | Microseconds per row on `LcdBus` (22 us, M5GFX 15.5 us) |
+| `epdpi_lcd_ramp` | The `M5Quality` ramp over `LcdBus`, the LCD_CAM DMA bus. Even gray steps, like M5GFX |
 
 Every example's header comment says what it tests, how to run it, what to expect, and what a
 failure means.
@@ -109,7 +114,7 @@ These cost time to find. They are recorded here so the next person does not repe
 | `M5PM1 did not answer` | wrong board, or I2C pins | check SDA 41, SCL 42 |
 | Panel does not change at all | no drive, or FPC cable loose | `epdpi_polarity`, then reseat the FPC |
 | Noise or uniform dark gray after `epdpi_clear` | wrong line sequence on the bus | `epdpi_timing` |
-| Gray ramp has only two tones | row time too long (portable bus) | use `into_fast_bus()` |
+| Gray ramp has only two tones | row time too long (portable bus) | use `into_fast_bus()`, or `lcd_bus!` for the closest match to M5GFX |
 | Mirrored or rotated text | framebuffer mapping | see `epdpi_text` |
 | Old content after an interrupted run | gate drivers left in an odd state | unplug USB, rerun |
 

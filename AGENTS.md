@@ -36,7 +36,7 @@ dependency set for an example's sake.
 - M5PM1 is at I2C **0x6E**. The design doc's 0x6F is the M5IOE1 expander on other boards.
 - Examples use the blocking `epdpi` API with `esp_hal::delay::Delay`; the bus needs
   microsecond delays.
-- Use `into_fast_bus()` for anything with grays. The portable bus (`into_bus()`) has a row
+- Use `lcd_bus!(p, 16)` (the `LCD_CAM` DMA bus) for anything that must match M5GFX's grays, `into_fast_bus()` otherwise. The portable bus (`into_bus()`) has a row
   time about 15x too long for the 16-gray waveform. See README "What was learned".
 - Power-cycle after an interrupted refresh before judging the next run.
 - Never `git add .` in the parent `~/Src` repo. This directory is its own repo.
