@@ -2,7 +2,7 @@
 //!
 //! Library diagnostic, step 4 of 6. First test of the waveform engine.
 //!
-//! Draws 16 vertical bars, 60 pixels wide, gray level 0 (black) on the left to 15 (white)
+//! Draws 16 vertical bars, 60 pixels wide and 480 tall, with a label line below, gray level 0 (black) on the left to 15 (white)
 //! on the right, and shows them with `RefreshMode::Quality16`. That mode clears the panel
 //! (8 darken, 8 lighten passes), then runs all 8 passes of the ED047TC1 waveform matrix.
 //!
@@ -36,13 +36,16 @@
 use alloc::vec;
 use defmt::{error, info};
 use embedded_graphics::{
+    mono_font::MonoTextStyle,
     pixelcolor::Gray4,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
+    text::Text,
 };
 use esp_hal::delay::Delay;
 use esp_hal::time::Instant;
 use esp_println as _;
+use profont::PROFONT_24_POINT;
 use rust_m5paperdiy_examples::{epdpi::prelude::*, pmic};
 
 extern crate alloc;
@@ -69,10 +72,17 @@ fn main() -> ! {
     };
 
     for level in 0..16u8 {
-        let _ = Rectangle::new(Point::new(i32::from(level) * 60, 0), Size::new(60, 540))
+        let _ = Rectangle::new(Point::new(i32::from(level) * 60, 0), Size::new(60, 480))
             .into_styled(PrimitiveStyle::with_fill(Gray4::new(level)))
             .draw(&mut fb);
     }
+    let style = MonoTextStyle::new(&PROFONT_24_POINT, Gray4::BLACK);
+    let _ = Text::new(
+        "Rust: epdpi Quality16 (FastEPD matrix)",
+        Point::new(40, 520),
+        style,
+    )
+    .draw(&mut fb);
 
     let start = Instant::now();
     match display.refresh(&fb, RefreshMode::Quality16) {
