@@ -21,7 +21,7 @@ embedded-hal      = "1.0.0"
 
 # Sibling checkout. Blocking API on purpose: the bit-banged bus needs microsecond delays,
 # which `esp_hal::delay::Delay` gives and an async timer does not.
-epdpi = { path = "../epdpi", features = ["defmt"] }
+epdpi = { path = "../epdpi", features = ["defmt", "esp32s3"] }
 
 # Anything only the examples need (SD card, fonts, image decoders, ...) goes here, so the
 # `Hello M5PaperDIY!` binary in `src/main.rs` and the library stay small.

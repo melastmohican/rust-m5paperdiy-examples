@@ -26,8 +26,15 @@ use esp_hal::gpio::Output;
 
 use epdpi::prelude::*;
 
-/// The bit-banged bus type every example uses.
+/// The portable bit-banged bus type.
 pub type Bus = GenericGpioBus<Output<'static>, Delay>;
+
+/// The register-level bus type the examples with grays use.
+pub type FastBus = epdpi::fast_bus::Esp32s3Bus<Output<'static>, Delay>;
+
+/// GPIO numbers of D0..D7 and CL. Must match [`display_pins!`].
+const DATA_GPIO: [u8; 8] = [6, 14, 7, 12, 9, 11, 8, 10];
+const CL_GPIO: u8 = 16;
 
 /// All fifteen display pins, configured as outputs and driven low.
 pub struct PaperDiyPins {
@@ -118,151 +125,11 @@ impl PaperDiyPins {
         GenericGpioBus::new(self.data, self.control, Delay::new())
     }
 
-    /// Wraps the pins in the register-level bus, with row timing close to M5GFX.
-    pub fn into_fast_bus(self) -> fast_bus::FastBus {
-        fast_bus::FastBus::new(self)
-    }
-}
-
-/// ESP32-S3 bus that writes scanlines through the GPIO set/clear registers.
-///
-/// `GenericGpioBus` takes about 250 us per row because every data pin is a separate call.
-/// The ED047TC1 waveform matrix assumes a row time near M5GFX's 16 us (FastEPD runs the same
-/// glass at 40 MHz, 6 us). A row that long drives every pass too hard, and the mid grays
-/// saturate. Data pins D0..D7 and CL are all below GPIO32, so one store sets or clears them.
-pub mod fast_bus {
-    use core::convert::Infallible;
-
-    use esp_hal::delay::Delay;
-    use esp_hal::gpio::Output;
-
-    use super::PaperDiyPins;
-    use epdpi::prelude::*;
-
-    /// ESP32-S3 GPIO_OUT_W1TS_REG and GPIO_OUT_W1TC_REG (TRM, GPIO base 0x6000_4000).
-    const OUT_W1TS: *mut u32 = 0x6000_4008 as *mut u32;
-    const OUT_W1TC: *mut u32 = 0x6000_400C as *mut u32;
-
-    /// GPIO number of D0..D7. Must match [`display_pins!`](crate::display_pins).
-    const DATA_GPIO: [u32; 8] = [6, 14, 7, 12, 9, 11, 8, 10];
-    const CL_GPIO: u32 = 16;
-
-    /// See the module docs.
-    pub struct FastBus {
-        // Held so the pins stay configured as outputs.
-        _data: [Output<'static>; 8],
-        ckv: Output<'static>,
-        spv: Output<'static>,
-        sph: Output<'static>,
-        oe: Output<'static>,
-        le: Output<'static>,
-        _cl: Output<'static>,
-        pwr: Output<'static>,
-        delay: Delay,
-        /// GPIO bit pattern for each byte value on D0..D7.
-        table: [u32; 256],
-        all_data: u32,
-    }
-
-    impl FastBus {
-        pub(crate) fn new(pins: PaperDiyPins) -> Self {
-            let mut table = [0u32; 256];
-            for (value, slot) in table.iter_mut().enumerate() {
-                for (bit, gpio) in DATA_GPIO.iter().enumerate() {
-                    if value & (1 << bit) != 0 {
-                        *slot |= 1 << gpio;
-                    }
-                }
-            }
-            let all_data = DATA_GPIO.iter().fold(0, |m, g| m | (1 << g));
-            let c = pins.control;
-            Self {
-                _data: pins.data,
-                ckv: c.ckv,
-                spv: c.spv,
-                sph: c.sph,
-                oe: c.oe,
-                le: c.le,
-                _cl: c.cl,
-                pwr: c.pwr,
-                delay: Delay::new(),
-                table,
-                all_data,
-            }
-        }
-    }
-
-    impl EpdParallelBus for FastBus {
-        type Error = Infallible;
-
-        fn set_power(&mut self, on: bool) -> Result<(), Self::Error> {
-            if on {
-                self.oe.set_high();
-                self.delay.delay_micros(100);
-                self.pwr.set_high();
-                self.delay.delay_micros(100);
-                self.spv.set_high();
-                self.sph.set_high();
-                self.delay.delay_millis(1);
-            } else {
-                self.delay.delay_millis(1);
-                self.pwr.set_low();
-                self.delay.delay_micros(10);
-                self.oe.set_low();
-                self.delay.delay_micros(100);
-                self.spv.set_low();
-            }
-            Ok(())
-        }
-
-        fn start_frame(&mut self) -> Result<(), Self::Error> {
-            self.spv.set_low();
-            self.delay.delay_micros(1);
-            self.ckv.set_low();
-            self.delay.delay_micros(3);
-            self.ckv.set_high();
-            self.delay.delay_micros(1);
-            self.spv.set_high();
-            for _ in 0..3 {
-                self.delay.delay_micros(3);
-                self.ckv.set_low();
-                self.delay.delay_micros(3);
-                self.ckv.set_high();
-            }
-            Ok(())
-        }
-
-        fn write_scanline(&mut self, data: &[u8]) -> Result<(), Self::Error> {
-            self.le.set_low();
-            self.ckv.set_high();
-            self.sph.set_low();
-            let cl = 1u32 << CL_GPIO;
-            for &byte in data {
-                let ones = self.table[usize::from(byte)];
-                // SAFETY: fixed ESP32-S3 GPIO write-one-to-set/clear registers. A write only
-                // affects the bits set in the value, and the pins touched here (D0..D7, CL)
-                // are owned by this struct.
-                unsafe {
-                    OUT_W1TC.write_volatile(self.all_data & !ones);
-                    OUT_W1TS.write_volatile(ones);
-                    OUT_W1TS.write_volatile(cl);
-                    OUT_W1TC.write_volatile(cl);
-                }
-            }
-            self.sph.set_high();
-            Ok(())
-        }
-
-        fn next_row(&mut self) -> Result<(), Self::Error> {
-            self.ckv.set_low();
-            self.le.set_high();
-            Ok(())
-        }
-
-        fn end_frame(&mut self) -> Result<(), Self::Error> {
-            self.le.set_low();
-            self.ckv.set_high();
-            Ok(())
+    /// Wraps the pins in `epdpi`'s register-level bus, with row timing close to M5GFX.
+    pub fn into_fast_bus(self) -> FastBus {
+        match FastBus::new(self.data, DATA_GPIO, self.control, CL_GPIO, Delay::new()) {
+            Ok(bus) => bus,
+            Err(_) => panic!("PaperDIY pin map rejected by the fast bus"),
         }
     }
 }
