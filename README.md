@@ -36,7 +36,7 @@ an example alone needs (SD card, font crates, image decoders) goes in `[dev-depe
 
 Requirements: the `esp` toolchain from `espup` (`rustup toolchain list` should show `esp`)
 and `espflash`. Always build with `--release`: the PSRAM heap and the bus are far too slow in
-a dev build. `epdpi` is a path dependency on the sibling checkout `../epdpi`.
+a dev build. `epdpi` and `epdpi-esp` are path dependencies on the sibling checkout `../epdpi`, a workspace with both crates.
 
 ## Bring-up order (`epdpi_*`)
 
@@ -98,7 +98,7 @@ These cost time to find. They are recorded here so the next person does not repe
   `epdpi_timing` shows that the width of the CL pulse did not matter.
 - **Row time matters for grays.** The 16-gray waveform matrix assumes a row near 16 us. The
   portable bus takes about 250 us per row, which saturates the mid grays. `FastBus`
-  (`epdpi::fast_bus`, feature `esp32s3`) writes the data pins through the ESP32-S3 GPIO set and clear registers and
+  (`epdpi-esp`, `fast_bus`) writes the data pins through the ESP32-S3 GPIO set and clear registers and
   gives a smooth ramp. It is used by `epdpi_clear`, `epdpi_gray_ramp`, `epdpi_text` and
   `epdpi_fast_mono`.
 - **PSRAM is required.** The two 4 bits per pixel buffers are 259,200 bytes each. The chip

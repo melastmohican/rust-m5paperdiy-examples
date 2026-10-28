@@ -30,7 +30,7 @@ use epdpi::prelude::*;
 pub type Bus = GenericGpioBus<Output<'static>, Delay>;
 
 /// The register-level bus type the examples with grays use.
-pub type FastBus = epdpi::fast_bus::Esp32s3Bus<Output<'static>, Delay>;
+pub type FastBus = epdpi_esp::fast_bus::Esp32s3Bus<Output<'static>, Delay>;
 
 /// GPIO numbers of D0..D7 and CL. Must match [`display_pins!`].
 const DATA_GPIO: [u8; 8] = [6, 14, 7, 12, 9, 11, 8, 10];
@@ -117,6 +117,7 @@ macro_rules! display_pins {
 }
 
 pub use epdpi;
+pub use epdpi_esp;
 
 impl PaperDiyPins {
     /// Wraps the pins in the portable bit-banged bus. Correct but about 15 times slower per
@@ -125,7 +126,7 @@ impl PaperDiyPins {
         GenericGpioBus::new(self.data, self.control, Delay::new())
     }
 
-    /// Wraps the pins in `epdpi`'s register-level bus, with row timing close to M5GFX.
+    /// Wraps the pins in `epdpi-esp`'s register-level bus, with row timing close to M5GFX.
     pub fn into_fast_bus(self) -> FastBus {
         match FastBus::new(self.data, DATA_GPIO, self.control, CL_GPIO, Delay::new()) {
             Ok(bus) => bus,
@@ -134,146 +135,7 @@ impl PaperDiyPins {
     }
 }
 
-/// ESP32-S3 `LCD_CAM` i8080 bus with DMA, the way M5GFX drives the panel.
-///
-/// The data pins D0..D7, the source clock CL (the i8080 write strobe) and SPH (the chip
-/// select, low while a scanline is clocked) belong to the LCD peripheral. CKV, LE, SPV, OE
-/// and PWR stay plain GPIO, with CKV held high for exactly the length of the DMA transfer,
-/// as M5GFX's `Bus_EPD` does. The row data phase is then fixed by the bus clock.
-pub mod lcd_bus {
-    use esp_hal::Blocking;
-    use esp_hal::delay::Delay;
-    use esp_hal::dma::{DmaError, DmaTxBuf};
-    use esp_hal::gpio::Output;
-    use esp_hal::lcd_cam::lcd::i8080::{Command, I8080};
-
-    use epdpi::prelude::*;
-
-    /// Why a bus call failed.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum LcdBusError {
-        /// The DMA transfer failed.
-        Dma(DmaError),
-        /// A previous failure left the bus without its peripheral.
-        Lost,
-        /// The scanline does not fit the DMA buffer.
-        TooLong,
-    }
-
-    /// See the module docs.
-    pub struct LcdBus {
-        i8080: Option<I8080<'static, Blocking>>,
-        buf: Option<DmaTxBuf>,
-        ckv: Output<'static>,
-        spv: Output<'static>,
-        oe: Output<'static>,
-        le: Output<'static>,
-        pwr: Output<'static>,
-        delay: Delay,
-    }
-
-    impl LcdBus {
-        #[doc(hidden)]
-        pub fn new(
-            i8080: I8080<'static, Blocking>,
-            buf: DmaTxBuf,
-            control: [Output<'static>; 5],
-        ) -> Self {
-            let [ckv, spv, oe, le, pwr] = control;
-            Self {
-                i8080: Some(i8080),
-                buf: Some(buf),
-                ckv,
-                spv,
-                oe,
-                le,
-                pwr,
-                delay: Delay::new(),
-            }
-        }
-    }
-
-    impl EpdParallelBus for LcdBus {
-        type Error = LcdBusError;
-
-        fn set_power(&mut self, on: bool) -> Result<(), Self::Error> {
-            if on {
-                self.oe.set_high();
-                self.delay.delay_micros(100);
-                self.pwr.set_high();
-                self.delay.delay_micros(100);
-                self.spv.set_high();
-                self.delay.delay_millis(1);
-            } else {
-                self.delay.delay_millis(1);
-                self.pwr.set_low();
-                self.delay.delay_micros(10);
-                self.oe.set_low();
-                self.delay.delay_micros(100);
-                self.spv.set_low();
-            }
-            Ok(())
-        }
-
-        fn start_frame(&mut self) -> Result<(), Self::Error> {
-            self.spv.set_low();
-            self.delay.delay_micros(1);
-            self.ckv.set_low();
-            self.delay.delay_micros(3);
-            self.ckv.set_high();
-            self.delay.delay_micros(1);
-            self.spv.set_high();
-            for _ in 0..3 {
-                self.delay.delay_micros(3);
-                self.ckv.set_low();
-                self.delay.delay_micros(3);
-                self.ckv.set_high();
-            }
-            Ok(())
-        }
-
-        fn write_scanline(&mut self, data: &[u8]) -> Result<(), Self::Error> {
-            let (Some(i8080), Some(mut buf)) = (self.i8080.take(), self.buf.take()) else {
-                return Err(LcdBusError::Lost);
-            };
-            if data.len() > buf.capacity() {
-                self.i8080 = Some(i8080);
-                self.buf = Some(buf);
-                return Err(LcdBusError::TooLong);
-            }
-            buf.fill(data);
-            self.le.set_low();
-            self.ckv.set_high();
-            match i8080.send(Command::<u8>::None, 0, buf) {
-                Ok(transfer) => {
-                    let (result, i8080, buf) = transfer.wait();
-                    self.i8080 = Some(i8080);
-                    self.buf = Some(buf);
-                    result.map_err(LcdBusError::Dma)
-                }
-                Err((err, i8080, buf)) => {
-                    self.i8080 = Some(i8080);
-                    self.buf = Some(buf);
-                    Err(LcdBusError::Dma(err))
-                }
-            }
-        }
-
-        fn next_row(&mut self) -> Result<(), Self::Error> {
-            self.ckv.set_low();
-            self.le.set_high();
-            Ok(())
-        }
-
-        fn end_frame(&mut self) -> Result<(), Self::Error> {
-            self.le.set_low();
-            self.ckv.set_high();
-            Ok(())
-        }
-    }
-}
-
-/// Builds an [`lcd_bus::LcdBus`] on the PaperDIY pins, with the bus clock in MHz.
+/// Builds an [`epdpi_esp::lcd_bus::LcdBus`] on the PaperDIY pins, with the bus clock in MHz.
 ///
 /// The data lines D0..D7 are GPIO 6, 14, 7, 12, 9, 11, 8, 10, CL is GPIO16 and SPH is
 /// GPIO13, all driven by the LCD peripheral. CKV 18, SPV 17, OE 45, LE 15 and PWR 46 are
@@ -308,16 +170,16 @@ macro_rules! lcd_bus {
         let Ok(buf) = dma_tx_buffer!(256) else {
             panic!("DMA buffer allocation failed");
         };
-        $crate::lcd_bus::LcdBus::new(
+        $crate::epdpi_esp::lcd_bus::LcdBus::new(
             i8080,
             buf,
-            [
-                out($p.GPIO18.into()),
-                out($p.GPIO17.into()),
-                out($p.GPIO45.into()),
-                out($p.GPIO15.into()),
-                out($p.GPIO46.into()),
-            ],
+            $crate::epdpi_esp::lcd_bus::LcdControlPins {
+                ckv: out($p.GPIO18.into()),
+                spv: out($p.GPIO17.into()),
+                oe: out($p.GPIO45.into()),
+                le: out($p.GPIO15.into()),
+                pwr: out($p.GPIO46.into()),
+            },
         )
     }};
 }

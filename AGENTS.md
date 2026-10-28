@@ -1,6 +1,6 @@
 # rust-m5paperdiy-examples
 
-Hardware bring-up examples for `../epdpi` on the M5Stack PaperDIY (ESP32-S3, ED047TC1).
+Hardware bring-up examples for `../epdpi` (crates `epdpi` and `epdpi-esp`) on the M5Stack PaperDIY (ESP32-S3, ED047TC1).
 Layout mirrors `../rust-reterminal-e1002-examples`.
 
 ## Commands
