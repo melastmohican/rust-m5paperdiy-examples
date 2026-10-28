@@ -24,6 +24,16 @@ bit-banged bus are far too slow in a dev build.
 | 5 | `epd_text` | Framebuffer orientation, clipping | text reads normally, border on all edges |
 | 6 | `epd_fast_mono` | Differential updates | counter updates without a flash |
 
+## Debug examples
+
+Used to find the bus sequence that works. Keep them for the next board or panel.
+
+| Example | Use |
+| :--- | :--- |
+| `pmic_dump` | Read-only dump of the M5PM1 registers, to diff a working state against a cold start |
+| `epd_polarity` | Darken-only then lighten-only through the raw bus, no waveform engine |
+| `epd_timing` | M5GFX's line sequence on raw pins with three clock widths |
+
 ## Board
 
 | Signal | GPIO | Signal | GPIO |
