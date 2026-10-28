@@ -1,19 +1,30 @@
-//! # Polarity Test (M5Stack PaperDIY)
+//! # epdpi_polarity: one-direction drive test (M5Stack PaperDIY)
 //!
-//! Debug step between `epd_pins` and `epd_clear`. Talks to the bus directly, no waveform
-//! engine, and drives the whole panel one direction at a time:
+//! Library diagnostic. Not part of the normal bring-up order. Use it when `epdpi_clear`
+//! does nothing.
+//!
+//! Talks to the bus trait directly, with no waveform engine, and drives the whole panel one
+//! direction at a time:
 //!
 //! 1. **Darken** (`0x55`, data pins D0 D2 D4 D6) for 30 passes, then holds 10 seconds.
 //! 2. **Lighten** (`0xAA`, data pins D1 D3 D5 D7) for 30 passes, then holds 10 seconds.
 //! 3. Repeats.
 //!
-//! ## What to watch
+//! It uses `GenericGpioBus` on purpose, so it exercises the portable bus.
 //!
-//! - After stage 1 the panel should be clearly darker or solid black.
-//! - After stage 2 it should be clearly lighter or solid white.
-//! - If only one stage changes the panel, the other direction's data pins are not
-//!   reaching the source drivers. That points at the pin map, not the waveform.
-//! - If neither changes it, the fault is in power or the gate/latch lines.
+//! ## Run
+//!
+//! ```text
+//! cargo run --release --example epdpi_polarity
+//! ```
+//!
+//! ## How to read it
+//!
+//! - **Only one stage changes the panel:** the data pins for the other direction are not
+//!   reaching the source drivers. That is a pin map problem, not a waveform problem.
+//! - **Neither changes it:** power, or the gate and latch lines. On the hardware this was
+//!   written for, this was the result with the original `GenericGpioBus` line sequence.
+//! - **Both change it:** the bus is fine, look at the waveform code.
 #![no_std]
 #![no_main]
 

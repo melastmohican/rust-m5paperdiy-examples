@@ -1,14 +1,35 @@
-//! # Gray Ramp (M5Stack PaperDIY)
+//! # epdpi_gray_ramp: 16-level grayscale (M5Stack PaperDIY)
 //!
-//! Step 4. Draws 16 vertical bars, gray level 0 (black) on the left to 15 (white) on the
-//! right, and shows them with `RefreshMode::Quality16`.
+//! Library diagnostic, step 4 of 6. First test of the waveform engine.
 //!
-//! ## What to watch
+//! Draws 16 vertical bars, 60 pixels wide, gray level 0 (black) on the left to 15 (white)
+//! on the right, and shows them with `RefreshMode::Quality16`. That mode clears the panel
+//! (8 darken, 8 lighten passes), then runs all 8 passes of the ED047TC1 waveform matrix.
 //!
-//! - 16 distinct steps, darkening smoothly left to right. Two neighbours that look
-//!   identical mean the waveform matrix does not suit the panel's temperature or batch.
-//! - Bars exactly 60 pixels wide with no gaps. Shifted columns mean the pixel order within
-//!   a scanline byte is wrong.
+//! ## Run
+//!
+//! ```text
+//! cargo run --release --example epdpi_gray_ramp
+//! ```
+//!
+//! ## Expected
+//!
+//! - The log prints `refresh done in N ms`. About 1,100 ms with `FastBus`.
+//! - 16 bars that lighten steadily from left to right.
+//!
+//! ## Why this example uses `FastBus`
+//!
+//! The waveform matrix assumes a row time near M5GFX's 16 microseconds. The portable
+//! `GenericGpioBus` takes about 250 microseconds per row, so every pass overdrives the
+//! pixels. On the hardware this was developed on, the result was dark steps on the left and
+//! one cream-white block from level 8 up. `FastBus` writes the data pins through the GPIO
+//! set and clear registers and restores the intended steps.
+//!
+//! ## Known limits
+//!
+//! The top levels (about 12 to 15) look alike to a phone camera and may not be separable by
+//! eye either. One band near level 10 can look slightly darker. Neither has been traced to
+//! the waveform table yet.
 #![no_std]
 #![no_main]
 

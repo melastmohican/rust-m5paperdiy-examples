@@ -1,14 +1,30 @@
-//! # Text and Shapes (M5Stack PaperDIY)
+//! # epdpi_text: text and shapes (M5Stack PaperDIY)
 //!
-//! Step 5. Draws a frame, a circle and some text with `embedded-graphics`, then refreshes
-//! with `RefreshMode::Quality16`.
+//! Library diagnostic, step 5 of 6. Checks orientation, clipping and `embedded-graphics`.
 //!
-//! ## What to watch
+//! Draws a 4 pixel border around the whole panel, a gray circle and two lines of text with
+//! `embedded-graphics`, then refreshes with `RefreshMode::Quality16`. The framebuffer is
+//! landscape, 960 wide by 540 tall, with the connector side on the right.
 //!
-//! - Text reads left to right and is not mirrored. Mirrored or rotated output means the
-//!   panel is mounted in a different orientation than the driver assumes, which is a
-//!   framebuffer mapping change, not a wiring fault.
-//! - The border touches all four edges. A missing edge means rows or columns are clipped.
+//! ## Run
+//!
+//! ```text
+//! cargo run --release --example epdpi_text
+//! ```
+//!
+//! ## Expected
+//!
+//! - Text reads left to right near the top left, not mirrored or rotated.
+//! - A gray circle sits in the upper right.
+//! - The border is visible on all four edges.
+//!
+//! ## If it fails
+//!
+//! - **Mirrored or rotated text:** a framebuffer mapping change, not a wiring fault.
+//! - **A missing border edge:** rows or columns are clipped.
+//!
+//! The 10x20 font is about 2 mm tall on the glass, which is small. It is the largest mono
+//! font that `embedded-graphics` ships.
 #![no_std]
 #![no_main]
 

@@ -1,15 +1,31 @@
-//! # Bus Timing Variants (M5Stack PaperDIY)
+//! # epdpi_timing: bus timing variants (M5Stack PaperDIY)
 //!
-//! Debug step. Replays the M5GFX line sequence (`Bus_EPD.inl`) on raw pins and varies the
-//! source-clock pulse width, so a run shows which timing the panel responds to.
+//! Library diagnostic. Not part of the normal bring-up order.
 //!
-//! M5GFX differs from `GenericGpioBus` in three ways, all reproduced here:
-//! - waits 1 ms after the power rail comes up,
-//! - drops LE *before* a line's data and keeps it high between lines,
-//! - holds CL high for a full 16 MHz DMA clock period, not a GPIO write apart.
+//! Replays the M5GFX line sequence (`Bus_EPD.inl`) on raw pins, independent of the `epdpi`
+//! bus, and varies the source-clock pulse width so a run shows which timing the panel
+//! responds to. M5GFX differs from the first `GenericGpioBus` in three ways, all reproduced
+//! here:
 //!
-//! For each variant it darkens the whole panel (30 passes), holds 8 s, lightens it
-//! (30 passes), holds 8 s. Watch the panel and note which variant, if any, changes it.
+//! - it waits 1 ms after the power rail comes up,
+//! - it drops LE before a line's data and keeps it high between lines,
+//! - its frame start uses short 1 to 3 microsecond steps.
+//!
+//! Variants: V1 clocks CL as fast as GPIO writes allow, V2 holds CL 300 ns high and low,
+//! V3 holds it 2 microseconds. For each it darkens the whole panel (30 passes), holds 8 s,
+//! lightens it (30 passes) and holds 8 s.
+//!
+//! ## Run
+//!
+//! ```text
+//! cargo run --release --example epdpi_timing
+//! ```
+//!
+//! ## Result on the author's board
+//!
+//! All three variants changed the panel. The clock width did not matter. The line sequence
+//! (LE high between rows, 1 ms after power-on) did, and `GenericGpioBus` now uses it.
+//! Keep this example as a reference for the next panel or board.
 #![no_std]
 #![no_main]
 

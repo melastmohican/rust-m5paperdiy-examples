@@ -1,13 +1,30 @@
-//! # Fast Mono Updates (M5Stack PaperDIY)
+//! # epdpi_fast_mono: differential updates (M5Stack PaperDIY)
 //!
-//! Step 6. Counts up on screen with `RefreshMode::FastMono`, which only drives pixels that
-//! changed, so there is no full-screen flash. Every 10 updates it runs a full `clear` to
-//! wipe the ghosting that differential updates leave behind.
+//! Library diagnostic, step 6 of 6.
 //!
-//! ## What to watch
+//! Counts up on screen with `RefreshMode::FastMono`. That mode drives only the pixels that
+//! changed since the last refresh, in 4 passes plus a discharge pass, with no full-screen
+//! flash. Pixels at gray level 8 or above count as white. Every 10 updates the example runs
+//! a full `clear` to remove the ghosting that differential updates leave behind.
 //!
-//! - Each update takes well under the `Quality16` time and does not flash.
-//! - Old digits fade slightly under repeated updates, then vanish after the periodic clear.
+//! ## Run
+//!
+//! ```text
+//! cargo run --release --example epdpi_fast_mono
+//! ```
+//!
+//! ## Expected
+//!
+//! - The log prints `update N in 379 ms`. Every update takes the same time, because the
+//!   number of passes is fixed. It does not depend on how many pixels changed.
+//! - Only the digits change on screen, with no black or white flash, until the periodic
+//!   clear at update 10.
+//! - Old digits may fade slightly between clears.
+//!
+//! ## Limits
+//!
+//! `FastMono` works on the whole frame. There is no partial-window refresh yet, so a tiny
+//! change still costs 379 ms.
 #![no_std]
 #![no_main]
 

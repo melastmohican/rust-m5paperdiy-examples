@@ -1,12 +1,30 @@
-//! # PMIC Register Dump (M5Stack PaperDIY)
+//! # epdpi_pmic_dump: PMIC register dump (M5Stack PaperDIY)
 //!
-//! Read-only. Prints the M5PM1 registers that control rails and GPIOs, without touching
-//! anything. Run it once in a state where the panel works (right after an Arduino
-//! M5Unified sketch), then again after a full power cycle, and diff the two logs. The
-//! registers that differ are the ones `pmic::epd_power_on` is missing.
+//! Library diagnostic. Not part of the normal bring-up order.
 //!
-//! `0x06` PWR_CFG bits: 0 charge, 1 DC-DC 3V3, 2 LDO, 3 5V boost, 4 LED.
-//! IRQ status registers (`0x40..0x42`) are skipped because a read may clear them.
+//! Read-only. Prints the M5PM1 registers that control rails and GPIOs without writing
+//! anything. Run it in a state where the panel works (for example right after an Arduino
+//! M5Unified sketch), then again after a full power cycle, and diff the two logs. Registers
+//! that differ show what a working setup configures and `pmic::epd_power_on` does not.
+//!
+//! Register `0x06` PWR_CFG bits: 0 charge, 1 DC-DC 3V3, 2 LDO, 3 5V boost, 4 LED. The IRQ
+//! status registers (`0x40..0x42`) are skipped because reading them may clear them.
+//!
+//! ## Run
+//!
+//! ```text
+//! cargo run --release --example epdpi_pmic_dump
+//! ```
+//!
+//! With no battery attached, unplugging USB removes all power from the PMIC, which gives a
+//! clean cold start for the second dump.
+//!
+//! ## Result on the author's board
+//!
+//! A cold PMIC already reads `PWR_CFG = 0x17`. The only differences between a cold and a
+//! working state were GPIO2 (EPD_PWR, which `epd_power_on` sets) and a pull-up on GPIO3
+//! (charge status, unrelated to the panel). The PMIC was therefore not the cause of the
+//! early failures.
 #![no_std]
 #![no_main]
 

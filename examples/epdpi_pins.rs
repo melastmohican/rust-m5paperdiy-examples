@@ -1,14 +1,31 @@
-//! # Pin Walk (M5Stack PaperDIY)
+//! # epdpi_pins: display pin walk (M5Stack PaperDIY)
 //!
-//! Step 2 of bring-up. Drives each of the 15 display GPIOs high for 2 seconds, one at a
-//! time, then low, and logs which one is active. Probe the matching FPC pin or test point
-//! with a meter or scope to confirm the pin map before trusting the driver.
+//! Library diagnostic, step 2 of 6. No display driver involved.
 //!
-//! The PMIC rail is switched on first so the level shifters are powered. The panel's
-//! high-voltage rails stay off because PWR (GPIO46) is only raised in the last step, and
-//! no scanline is clocked.
+//! Drives each of the 15 display GPIOs high for 2 seconds, one at a time, and logs which one
+//! is active. With a meter or scope on the matching FPC pin or test point this confirms the
+//! pin map. Without one it still proves the firmware runs and every pin can be configured.
+//! The panel does not change.
 //!
-//! The walk order is D0..D7, CKV, SPV, CL, LE, SPH, OE, PWR.
+//! The PMIC rail is switched on first so the level shifters are powered. PWR (GPIO46) is
+//! raised only in the last step and no scanline is clocked, so nothing is driven into the
+//! glass.
+//!
+//! ## Run
+//!
+//! ```text
+//! cargo run --release --example epdpi_pins
+//! ```
+//!
+//! ## Expected log
+//!
+//! One `<signal> <gpio> high` line every 2 seconds, in the order D0..D7, CKV, SPV, CL, LE,
+//! SPH, OE, PWR, then repeating. Stop it with Ctrl+C.
+//!
+//! ## Pin map
+//!
+//! D0..D7 = GPIO 6, 14, 7, 12, 9, 11, 8, 10. CKV 18, SPV 17, CL 16, LE 15, SPH 13, OE 45,
+//! PWR 46. Source: M5GFX `board_M5PaperDIY`.
 #![no_std]
 #![no_main]
 
