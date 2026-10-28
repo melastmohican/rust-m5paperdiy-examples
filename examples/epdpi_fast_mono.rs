@@ -20,6 +20,8 @@
 //! - Only the digits change on screen, with no black or white flash, until the periodic
 //!   clear at update 10.
 //! - Old digits may fade slightly between clears.
+//! - A second line reads `Rust: epdpi FastMono`. The Arduino reference sketch
+//!   `EpdFastCounter` prints `Arduino: M5GFX epd_fast`, so a filmed clip says which build it is.
 //!
 //! ## Limits
 //!
@@ -31,15 +33,11 @@
 use alloc::vec;
 use core::fmt::Write;
 use defmt::{error, info};
-use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
-    pixelcolor::Gray4,
-    prelude::*,
-    text::Text,
-};
+use embedded_graphics::{mono_font::MonoTextStyle, pixelcolor::Gray4, prelude::*, text::Text};
 use esp_hal::delay::Delay;
 use esp_hal::time::Instant;
 use esp_println as _;
+use profont::PROFONT_24_POINT;
 use rust_m5paperdiy_examples::{epdpi::prelude::*, pmic};
 
 extern crate alloc;
@@ -86,7 +84,7 @@ fn main() -> ! {
         error!("initial clear failed");
     }
 
-    let style = MonoTextStyle::new(&FONT_10X20, Gray4::BLACK);
+    let style = MonoTextStyle::new(&PROFONT_24_POINT, Gray4::BLACK);
     let mut count = 0u32;
     loop {
         fb.fill(0xF);
@@ -98,6 +96,7 @@ fn main() -> ! {
         if let Ok(text) = core::str::from_utf8(&label.buf[..label.len]) {
             let _ = Text::new(text, Point::new(40, 80), style).draw(&mut fb);
         }
+        let _ = Text::new("Rust: epdpi FastMono", Point::new(40, 130), style).draw(&mut fb);
 
         let start = Instant::now();
         match display.refresh(&fb, RefreshMode::FastMono) {
