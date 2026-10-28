@@ -53,7 +53,7 @@ fn main() -> ! {
     let mut delay = Delay::new();
     let _ = pmic::epd_power_on(&mut i2c, &mut delay);
 
-    let bus = rust_m5paperdiy_examples::display_pins!(p).into_bus();
+    let bus = rust_m5paperdiy_examples::display_pins!(p).into_fast_bus();
     let mut prev = vec![0xFFu8; Ed047tc1::FB_BYTES];
     let mut line = vec![0u8; Ed047tc1::SCANLINE_BYTES];
     let mut fb_mem = vec![0xFFu8; Ed047tc1::FB_BYTES];

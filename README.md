@@ -51,7 +51,7 @@ M5PM1 first. The PMIC sequence and pin map come from M5GFX.
 
 - The ESP32-S3 module needs octal PSRAM. The two 4 bits per pixel buffers are 259,200
   bytes each and are allocated from it.
-- The bus is bit-banged GPIO. A `LCD_CAM` DMA bus is a later `EpdParallelBus` implementation.
+- The examples use `FastBus`, a register-level GPIO bus in `src/lib.rs`. `epdpi`'s portable `GenericGpioBus` works but takes ~250 us per row, so 16-gray refresh saturates the mid grays. An `LCD_CAM` DMA bus is a later `EpdParallelBus` implementation.
 - Power-cycle the board after interrupting a refresh before judging the next run.
 - `epdpi` is a path dependency on a sibling checkout (`../epdpi`).
 
