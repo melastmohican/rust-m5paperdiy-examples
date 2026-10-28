@@ -26,7 +26,7 @@ dependency set for an example's sake.
 - `examples/epdpi_*.rs` are diagnostics for the `epdpi` library. Keep them small and keep
   each one's header comment current (what it tests, how to run, expected result, failure
   meaning).
-- Real board examples ported from `~/Src/Arduino/M5PaperDIY` take no prefix. See the porting
+- Real board examples ported from [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) take no prefix. See the porting
   plan in README.md.
 
 ## Rules

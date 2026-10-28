@@ -21,7 +21,7 @@ It is the quickest check that a board, cable and toolchain work. If nothing appe
 | Prefix | Purpose | Status |
 | :--- | :--- | :--- |
 | `epdpi_*` | Basic diagnostics for the `epdpi` library. They prove each layer of the driver on real hardware. | 14 examples, all working |
-| no prefix | Real board examples, ports of the Arduino sketches in `~/Src/Arduino/M5PaperDIY` | planned, see [Porting plan](#porting-plan) |
+| no prefix | Real board examples, ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | planned, see [Porting plan](#porting-plan) |
 
 ## Run
 
@@ -120,7 +120,7 @@ These cost time to find. They are recorded here so the next person does not repe
 
 ## Porting plan
 
-Which Arduino sketches in `~/Src/Arduino/M5PaperDIY` can become real board examples. Effort
+Which Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) can become real board examples. Effort
 is a rough size for one example, assuming the driver as it is today.
 
 | Sketch | Port as | Needs | Effort | Notes |
