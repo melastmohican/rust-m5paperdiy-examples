@@ -15,9 +15,9 @@
 //! ## Expected
 //!
 //! - Portrait menu: `Factory Test`, `Compare`, `Gray Ramp`, `Life Game`. A picks, B opens.
-//! - Factory Test: Battery (3.0 to 4.4 V passes), PSRAM, Button A and Button B turn to `[PASS]`
-//!   when they pass or are pressed. B leaves, A reruns once both buttons passed.
-//!   **Not ported yet:** the Wi-Fi and SD Card rows say so and stay failed.
+//! - Factory Test: Battery (3.0 to 4.4 V passes), PSRAM, SD Card (card size) and Button A and
+//!   Button B turn to `[PASS]` when they pass or are pressed. B leaves, A reruns once both
+//!   buttons passed. **Not ported yet:** the Wi-Fi row says so and stays failed.
 //! - Compare: A picks a mode, B refreshes with it and shows the time, hold B to leave.
 //! - Gray Ramp: 16 bands, A inverts, B leaves.
 //! - Life Game: A pauses, a second A resumes with new cells, B leaves.
@@ -31,10 +31,17 @@ extern crate alloc;
 mod ui;
 
 use defmt::{error, info};
+use embedded_hal::delay::DelayNs;
 use embedded_hal::i2c::I2c;
+use embedded_hal::spi::SpiDevice;
+use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_sdmmc::{SdCard, sdcard::DummyCsPin};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::{Input, InputConfig, Pull};
+use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
+use esp_hal::spi::Mode as SpiMode;
+use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::Instant;
+use esp_hal::time::Rate;
 use esp_println as _;
 use rust_m5paperdiy_examples::esp_alloc::{HEAP, MemoryCapability};
 use rust_m5paperdiy_examples::{epdpi, pmic};
@@ -76,7 +83,7 @@ fn now_ms() -> u64 {
 /// Refreshes the screen with `mode` and returns how long it took in milliseconds.
 fn show<B: EpdParallelBus>(
     display: &mut EpdDisplay<'_, B, Ed047tc1>,
-    fb: &Fb,
+    fb: &Fb<'_>,
     mode: RefreshMode,
 ) -> u32 {
     let start = now_ms();
@@ -93,11 +100,18 @@ fn battery_mv<I: I2c>(i2c: &mut I) -> Option<u16> {
     Some(u16::from_le_bytes(raw))
 }
 
-fn run_checklist<B: EpdParallelBus, I: I2c>(
+/// Card size in MiB, or `None` when no card answers: the sketch's `SD.begin` and `cardSize`.
+fn sd_card_mib<S: SpiDevice<u8>, D: DelayNs>(spi: S, delay: D) -> Option<u64> {
+    let card = SdCard::new(spi, DummyCsPin, delay);
+    card.num_bytes().ok().map(|bytes| bytes / (1024 * 1024))
+}
+
+fn run_checklist<B: EpdParallelBus, I: I2c, S: SpiDevice<u8>>(
     display: &mut EpdDisplay<'_, B, Ed047tc1>,
-    fb: &mut Fb,
+    fb: &mut Fb<'_>,
     pad: &mut Pad,
     i2c: &mut I,
+    sd: &mut S,
     delay: &Delay,
 ) {
     loop {
@@ -129,7 +143,13 @@ fn run_checklist<B: EpdParallelBus, I: I2c>(
         } else {
             items[2].detail.set(format_args!("[FAILED]"));
         }
-        items[3].detail.set(format_args!("not ported yet"));
+        match sd_card_mib(&mut *sd, Delay::new()) {
+            Some(mib) => {
+                items[3].pass = true;
+                items[3].detail.set(format_args!("{} MiB", mib));
+            }
+            None => items[3].detail.set(format_args!("[FAILED]")),
+        }
         items[4].detail.set(format_args!("press A"));
         items[5].detail.set(format_args!("press B"));
 
@@ -165,7 +185,7 @@ fn run_checklist<B: EpdParallelBus, I: I2c>(
 
 fn run_compare<B: EpdParallelBus>(
     display: &mut EpdDisplay<'_, B, Ed047tc1>,
-    fb: &mut Fb,
+    fb: &mut Fb<'_>,
     pad: &mut Pad,
     delay: &Delay,
 ) {
@@ -196,7 +216,7 @@ fn run_compare<B: EpdParallelBus>(
 
 fn run_ramp<B: EpdParallelBus>(
     display: &mut EpdDisplay<'_, B, Ed047tc1>,
-    fb: &mut Fb,
+    fb: &mut Fb<'_>,
     pad: &mut Pad,
     delay: &Delay,
 ) {
@@ -220,7 +240,7 @@ fn run_ramp<B: EpdParallelBus>(
 
 fn run_life<B: EpdParallelBus>(
     display: &mut EpdDisplay<'_, B, Ed047tc1>,
-    fb: &mut Fb,
+    fb: &mut Fb<'_>,
     pad: &mut Pad,
     delay: &Delay,
 ) {
@@ -266,6 +286,26 @@ fn main() -> ! {
         state_b: Button::new(),
     };
 
+    // microSD on SPI2: CLK 39, MOSI 38, MISO 40, CS 47, 20 MHz like the sketch.
+    let spi = Spi::new(
+        p.SPI2,
+        SpiConfig::default()
+            .with_frequency(Rate::from_mhz(20))
+            .with_mode(SpiMode::_0),
+    )
+    .map(|spi| {
+        spi.with_sck(p.GPIO39)
+            .with_miso(p.GPIO40)
+            .with_mosi(p.GPIO38)
+    });
+    let Ok(spi) = spi else {
+        error!("spi config failed");
+        rust_m5paperdiy_examples::halt();
+    };
+    let cs = Output::new(p.GPIO47, Level::High, OutputConfig::default());
+    // Infallible for an `Output` chip select.
+    let mut sd = ExclusiveDevice::new_no_delay(spi, cs).unwrap_or_else(|e| match e {});
+
     let bus = rust_m5paperdiy_examples::lcd_bus!(p, 16);
     let mut prev = alloc::vec![0xFFu8; Ed047tc1::FB_BYTES];
     let mut line = alloc::vec![0u8; Ed047tc1::SCANLINE_BYTES];
@@ -295,7 +335,7 @@ fn main() -> ! {
         }
         if b.pressed {
             match selected {
-                0 => run_checklist(&mut display, &mut fb, &mut pad, &mut i2c, &delay),
+                0 => run_checklist(&mut display, &mut fb, &mut pad, &mut i2c, &mut sd, &delay),
                 1 => run_compare(&mut display, &mut fb, &mut pad, &delay),
                 2 => run_ramp(&mut display, &mut fb, &mut pad, &delay),
                 _ => run_life(&mut display, &mut fb, &mut pad, &delay),
