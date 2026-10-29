@@ -28,6 +28,7 @@ epdpi-esp = { path = "../epdpi/epdpi-esp", features = ["esp32s3", "defmt"] }
 # `Hello M5PaperDIY!` binary in `src/main.rs` and the library stay small.
 [dev-dependencies]
 profont = "0.7"
+u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.dev]
