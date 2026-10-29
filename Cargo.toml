@@ -27,6 +27,8 @@ epdpi-esp = { path = "../epdpi/epdpi-esp", features = ["esp32s3", "defmt"] }
 # Anything only the examples need (SD card, fonts, image decoders, ...) goes here, so the
 # `Hello M5PaperDIY!` binary in `src/main.rs` and the library stay small.
 [dev-dependencies]
+embedded-hal-bus = "0.2.0"
+embedded-sdmmc = "0.7.0"
 profont = "0.7"
 u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
 
