@@ -10,7 +10,7 @@ categories   = ["embedded", "no-std"]
 
 [dependencies]
 esp-hal = { version = "~1.1.0", features = ["defmt", "esp32s3", "unstable"] }
-esp-alloc = { version = "0.9.0", features = ["defmt", "esp32s3"] }
+esp-alloc = { version = "0.10.0", features = ["defmt", "esp32s3"] }
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["defmt", "esp32s3"] }
 esp-println = { version = "0.17.0", features = ["defmt-espflash", "esp32s3"] }
 
@@ -27,8 +27,11 @@ epdpi-esp = { path = "../epdpi/epdpi-esp", features = ["esp32s3", "defmt"] }
 # Anything only the examples need (SD card, fonts, image decoders, ...) goes here, so the
 # `Hello M5PaperDIY!` binary in `src/main.rs` and the library stay small.
 [dev-dependencies]
+embassy-futures = "0.1.2"
 embedded-hal-bus = "0.2.0"
 embedded-sdmmc = "0.7.0"
+esp-radio = { version = "0.18.0", features = ["wifi", "esp32s3", "unstable", "defmt"] }
+esp-rtos = { version = "0.3.0", features = ["defmt", "esp32s3", "esp-radio", "esp-alloc"] }
 profont = "0.7"
 u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
 

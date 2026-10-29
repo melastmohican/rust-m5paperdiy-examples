@@ -40,3 +40,7 @@ dependency set for an example's sake.
   time about 15x too long for the 16-gray waveform. See README "What was learned".
 - Power-cycle after an interrupted refresh before judging the next run.
 - Never `git add .` in the parent `~/Src` repo. This directory is its own repo.
+- Keep `esp-alloc` on the version `esp-radio` and `esp-rtos` use (0.10; check
+  `cargo tree -d | grep esp-alloc`), or the heap that `init!` and `heap_allocator!` fill is not the
+  one that allocates. `wifi_scan` starts `esp-rtos` without its Embassy executor and runs the async
+  scan with `embassy_futures::block_on`, because `esp-radio` 0.18 has no blocking scan.
