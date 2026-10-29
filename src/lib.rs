@@ -180,6 +180,7 @@ macro_rules! lcd_bus {
                 le: out($p.GPIO15.into()),
                 pwr: out($p.GPIO46.into()),
             },
+            $crate::esp_hal::delay::Delay::new(),
         )
     }};
 }
