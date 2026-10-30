@@ -22,7 +22,7 @@ bring-up diagnostics in [bringup.md](bringup.md).
 
 | Name | Purpose | Status |
 | :--- | :--- | :--- |
-| no prefix | Ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | `display_demo`, `buttons`, `text_log_scroll`, `factory_test`, `user_demo`, all working, see [Ports](#ports-of-the-arduino-sketches) |
+| no prefix | Ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | `display_demo`, `buttons`, `text_log_scroll`, `factory_test`, `user_demo`, `pm1_timer`, all working, see [Ports](#ports-of-the-arduino-sketches) |
 | `poc_*`, `wifi_scan` | Proofs that a part works from Rust, with a log and no display | `poc_battery`, `poc_sd`, `wifi_scan`, all working |
 
 The diagnostics that proved the `epdpi` driver layer by layer, and the host tests, are described in
@@ -99,6 +99,7 @@ M5GFX's FreeSans, so letter shapes differ a little.
 | `Button` | `buttons` | Shows the last button pressed, `M5Text`. Pins GPIO4 and GPIO3 |
 | `TextLogScroll` | `text_log_scroll` | A scrolling log, one full-screen `M5Fastest` update per line |
 | `FactoryTest` | `factory_test` | A two button menu: the checklist (battery, Wi-Fi, PSRAM, microSD, both buttons), Compare (times each refresh mode), Gray Ramp and the Game of Life |
+| `M5PM1` | `pm1_timer` | Uses the power chip's timer: BtnA sets a power-on timer for 3 s and shuts the board down, so it restarts by itself, BtnB sets a power-off timer for 3 s. **It powers the board off.** The timer is cleared at start-up, so one armed by an earlier run cannot fire after a reboot |
 | `PaperDIYUserDemo` | `user_demo` | The PAPER DIY poster with live widgets, all refreshed in small windows: battery voltage, a Wi-Fi list (A rescans), the microSD card with a 1 MiB write and read speed test (B runs it), A and B border feedback, and hold A and B for 2 s then 5 s to power off |
 
 `user_demo` follows the sketch's rule that every 40th partial refresh is a full `M5Quality` one,
@@ -106,8 +107,8 @@ to clear ghosting. It does not port the sketch's factory first-boot shutdown, wh
 The sketches `EpdFastCounter`, `EpdModesCounter` and `EpdQualityRamp` are the references for the
 diagnostics on the `bringup` branch (see [bringup.md](bringup.md)).
 
-Sketches without a Rust example: `M5PM1` (PMIC timer and shutdown), `microSD` (PNG viewer),
-`EpubReader` and `FastEPD/animated_smiles` (which does not work in Arduino either).
+Sketches without a Rust example: `microSD` (PNG viewer), `EpubReader` and `FastEPD/animated_smiles`
+(which does not work in Arduino either).
 
 `poc_battery` reads the M5PM1 voltage registers (VBAT, VIN, 5VINOUT, VREF) once a second and
 matches M5Unified's `getBatteryVoltage()`. `poc_sd` opens the card over SPI at 20 MHz, lists the
@@ -117,7 +118,7 @@ root directory and times a read. `wifi_scan` scans every 5 s and logs the access
 
 - `src/main.rs`: the `Hello M5PaperDIY!` program.
 - `examples/display_demo.rs`, `buttons.rs`, `text_log_scroll.rs`, `factory_test.rs`,
-  `user_demo.rs`: the ports. `factory_test` and `user_demo` keep their drawing and state
+  `user_demo.rs`, `pm1_timer.rs`: the ports. `factory_test` and `user_demo` keep their drawing and state
   machines in an inline `mod ui` block, which is the same text in the async twin.
 - `examples/poc_*.rs`, `examples/wifi_scan.rs`: parts proven from Rust.
 - `assets/`: `img_bg.png` and `img_logo.png`, M5Stack artwork copied from the Arduino sketch,
