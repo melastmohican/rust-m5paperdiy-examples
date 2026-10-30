@@ -29,7 +29,7 @@ epdpi-esp = { path = "../epdpi/epdpi-esp", features = ["esp32s3", "defmt"] }
 [dev-dependencies]
 embassy-futures = "0.1.2"
 embedded-hal-bus = "0.2.0"
-embedded-sdmmc = "0.7.0"
+embedded-sdmmc = "0.10.0"
 esp-radio = { version = "0.18.0", features = ["wifi", "esp32s3", "unstable", "defmt"] }
 esp-rtos = { version = "0.3.0", features = ["defmt", "esp32s3", "esp-radio", "esp-alloc"] }
 minipng = "1.0"

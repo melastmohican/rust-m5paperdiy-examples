@@ -18,9 +18,17 @@ struct Ram(Rc<RefCell<Vec<u8>>>);
 #[derive(Debug)]
 struct Fault;
 
+impl core::fmt::Display for Fault {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("fault")
+    }
+}
+
+impl core::error::Error for Fault {}
+
 impl BlockDevice for Ram {
     type Error = Fault;
-    fn read(&self, blocks: &mut [Block], start: BlockIdx, _reason: &str) -> Result<(), Fault> {
+    fn read(&self, blocks: &mut [Block], start: BlockIdx) -> Result<(), Fault> {
         let data = self.0.borrow();
         for (i, block) in blocks.iter_mut().enumerate() {
             let o = (start.0 as usize + i) * 512;

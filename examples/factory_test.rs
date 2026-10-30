@@ -595,7 +595,7 @@ use embedded_hal::delay::DelayNs;
 use embedded_hal::i2c::I2c;
 use embedded_hal::spi::SpiDevice;
 use embedded_hal_bus::spi::ExclusiveDevice;
-use embedded_sdmmc::{SdCard, sdcard::DummyCsPin};
+use embedded_sdmmc::SdCard;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::spi::Mode as SpiMode;
@@ -663,7 +663,7 @@ fn battery_mv<I: I2c>(i2c: &mut I) -> Option<u16> {
 
 /// Card size in MiB, or `None` when no card answers: the sketch's `SD.begin` and `cardSize`.
 fn sd_card_mib<S: SpiDevice<u8>, D: DelayNs>(spi: S, delay: D) -> Option<u64> {
-    let card = SdCard::new(spi, DummyCsPin, delay);
+    let card = SdCard::new(spi, delay);
     card.num_bytes().ok().map(|bytes| bytes / (1024 * 1024))
 }
 

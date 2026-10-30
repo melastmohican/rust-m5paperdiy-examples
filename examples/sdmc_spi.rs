@@ -1,4 +1,4 @@
-//! # poc_sd: can Rust read the microSD card? (M5Stack PaperDIY)
+//! # sdmc_spi: can Rust read the microSD card? (M5Stack PaperDIY)
 //!
 //! Proof of concept for the `sd_images` and `sd_speed` ports and the `factory_test`
 //! checklist. Opens the card over SPI at 20 MHz like the sketch (CLK 39, MOSI 38, MISO 40, CS 47, the pins in the
@@ -13,7 +13,7 @@
 //! ## Run
 //!
 //! ```text
-//! cargo run --release --example poc_sd
+//! cargo run --release --example sdmc_spi
 //! ```
 //!
 //! ## Expected
@@ -25,9 +25,9 @@
 #![no_main]
 
 use core::fmt::Write;
+use core::ops::ControlFlow;
 use defmt::{error, info};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use embedded_sdmmc::sdcard::DummyCsPin;
 use embedded_sdmmc::{Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Level, Output, OutputConfig};
@@ -73,7 +73,7 @@ impl Write for Name {
 #[esp_hal::main]
 fn main() -> ! {
     let p = rust_m5paperdiy_examples::init!();
-    info!("poc_sd: Rust, blocking");
+    info!("sdmc_spi: Rust, blocking");
     let delay = Delay::new();
 
     let spi = Spi::new(
@@ -95,7 +95,7 @@ fn main() -> ! {
     // Infallible for a `Output` chip select.
     let device = ExclusiveDevice::new_no_delay(spi, cs).unwrap_or_else(|e| match e {});
 
-    let card = SdCard::new(device, DummyCsPin, delay);
+    let card = SdCard::new(device, delay);
     match card.num_bytes() {
         Ok(bytes) => info!("card {} MiB", bytes / (1024 * 1024)),
         Err(_) => {
@@ -104,12 +104,12 @@ fn main() -> ! {
         }
     }
 
-    let mut volumes = VolumeManager::new(card, FixedTime);
-    let Ok(mut volume) = volumes.open_volume(VolumeIdx(0)) else {
+    let volumes = VolumeManager::new(card, FixedTime);
+    let Ok(volume) = volumes.open_volume(VolumeIdx(0)) else {
         error!("no FAT volume on the card");
         rust_m5paperdiy_examples::halt();
     };
-    let Ok(mut root) = volume.open_root_dir() else {
+    let Ok(root) = volume.open_root_dir() else {
         error!("cannot open the root directory");
         rust_m5paperdiy_examples::halt();
     };
@@ -141,6 +141,7 @@ fn main() -> ! {
                 biggest_size = entry.size;
             }
         }
+        ControlFlow::Continue(())
     });
     if listed.is_err() {
         error!("listing failed");
@@ -154,7 +155,7 @@ fn main() -> ! {
         info!("no file to read, put PaperDIY_01.png on the card");
         rust_m5paperdiy_examples::halt();
     }
-    let Ok(mut file) = root.open_file_in_dir(name, Mode::ReadOnly) else {
+    let Ok(file) = root.open_file_in_dir(name, Mode::ReadOnly) else {
         error!("cannot open {}", name);
         rust_m5paperdiy_examples::halt();
     };

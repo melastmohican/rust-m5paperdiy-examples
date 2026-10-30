@@ -12,7 +12,7 @@ description = "Host tests for the hardware-free `mod ui` blocks of the factory_t
 # Sibling checkout, like the examples crate. Blocking API, with the graphics feature.
 epdpi = { path = "../../epdpi/epdpi" }
 embedded-graphics = "0.8.1"
-embedded-sdmmc = "0.7.0"
+embedded-sdmmc = "0.10.0"
 minipng = "1.0"
 u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
 

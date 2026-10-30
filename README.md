@@ -23,7 +23,7 @@ bring-up diagnostics in [bringup.md](bringup.md).
 | Name | Purpose | Status |
 | :--- | :--- | :--- |
 | no prefix | Ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | `display_demo`, `buttons`, `text_log_scroll`, `factory_test`, `user_demo`, `pm1_timer`, `sd_images`, all working, see [Ports](#ports-of-the-arduino-sketches) |
-| `poc_*`, `wifi_scan` | Proofs that a part works from Rust, with a log and no display | `poc_battery`, `poc_sd`, `wifi_scan`, all working |
+| `poc_*`, `sdmc_spi`, `wifi_scan` | Proofs that a part works from Rust, with a log and no display | `poc_battery`, `sdmc_spi`, `wifi_scan`, all working |
 
 Every example says which build it is: a small `Rust: epdpi blocking` label on the screen (`epdpi async` in the
 async twin), or `<name>: Rust, blocking` as the first log line for the ones with no display. A photo or a
@@ -116,7 +116,7 @@ Sketches without a Rust example: `EpubReader` and `FastEPD/animated_smiles` (whi
 Arduino either).
 
 `poc_battery` reads the M5PM1 voltage registers (VBAT, VIN, 5VINOUT, VREF) once a second and
-matches M5Unified's `getBatteryVoltage()`. `poc_sd` opens the card over SPI at 20 MHz, lists the
+matches M5Unified's `getBatteryVoltage()`. `sdmc_spi` opens the card over SPI at 20 MHz, lists the
 root directory and times a read. `wifi_scan` scans every 5 s and logs the access points.
 
 ## Layout
@@ -125,7 +125,7 @@ root directory and times a read. `wifi_scan` scans every 5 s and logs the access
 - `examples/display_demo.rs`, `buttons.rs`, `text_log_scroll.rs`, `factory_test.rs`,
   `user_demo.rs`, `pm1_timer.rs`, `sd_images.rs`: the ports. `factory_test`, `user_demo` and `sd_images` keep their drawing and state
   machines in an inline `mod ui` block, which is the same text in the async twin.
-- `examples/poc_*.rs`, `examples/wifi_scan.rs`: parts proven from Rust.
+- `examples/poc_*.rs`, `examples/sdmc_spi.rs`, `examples/wifi_scan.rs`: parts proven from Rust.
 - `assets/`: `img_bg.png` and `img_logo.png`, M5Stack artwork copied from the Arduino sketch,
   used by `user_demo`.
 - `host-tests/`: the host tests, see [bringup.md](bringup.md).

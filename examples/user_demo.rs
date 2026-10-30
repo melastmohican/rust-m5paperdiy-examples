@@ -45,11 +45,10 @@ use core::task::Poll;
 use defmt::{error, info};
 use embassy_futures::poll_once;
 use embedded_hal::delay::DelayNs;
-use embedded_hal::digital::OutputPin;
 use embedded_hal::i2c::I2c;
 use embedded_hal::spi::SpiDevice;
 use embedded_hal_bus::spi::ExclusiveDevice;
-use embedded_sdmmc::sdcard::{CardType, DummyCsPin};
+use embedded_sdmmc::embedded_sdmmc_types::sdcard::CardType;
 use embedded_sdmmc::{SdCard, TimeSource, Timestamp};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
@@ -584,7 +583,7 @@ mod ui {
             if close {
                 let _ = mgr.close_file(self.file);
             }
-            let _ = mgr.delete_file_in_dir(self.dir, self.name.as_str());
+            let _ = mgr.delete_entry_in_dir(self.dir, self.name.as_str());
             let _ = mgr.close_dir(self.dir);
             let _ = mgr.close_volume(self.volume);
         }
@@ -754,7 +753,7 @@ mod ui {
         fn refresh_info(&mut self, det_low: bool, retry: bool) {
             if !det_low {
                 if self.mounted {
-                    self.mgr.device().forget();
+                    self.mgr.device(|card| card.forget());
                     self.mounted = false;
                 }
                 self.info = Info {
@@ -772,8 +771,8 @@ mod ui {
                 kind: "",
                 bytes: 0,
             };
-            self.mgr.device().forget();
-            let Some(kind) = self.mgr.device().kind() else {
+            self.mgr.device(|card| card.forget());
+            let Some(kind) = self.mgr.device(|card| card.kind()) else {
                 return;
             };
             // The filesystem has to be there too, like `SD.begin`.
@@ -783,7 +782,7 @@ mod ui {
                 }
                 Err(_) => return,
             }
-            let Ok(blocks) = self.mgr.device().num_blocks() else {
+            let Ok(blocks) = self.mgr.device(|card| card.num_blocks()) else {
                 return;
             };
             self.info = Info {
@@ -1406,11 +1405,11 @@ impl TimeSource for FixedTime {
     }
 }
 
-impl<S: SpiDevice<u8>, C: OutputPin, D: DelayNs> ui::Card for SdCard<S, C, D> {
+impl<S: SpiDevice<u8>, D: DelayNs> ui::Card for SdCard<S, D> {
     fn kind(&self) -> Option<&'static str> {
         self.get_card_type().map(|kind| match kind {
             CardType::SD1 | CardType::SD2 => "SDSC",
-            CardType::SDHC => "SDHC/SDXC",
+            CardType::SdhcSdxc => "SDHC/SDXC",
         })
     }
 
@@ -1527,7 +1526,7 @@ fn main() -> ! {
     let cs = Output::new(p.GPIO47, Level::High, OutputConfig::default());
     // Infallible for an `Output` chip select.
     let sd_device = ExclusiveDevice::new_no_delay(spi, cs).unwrap_or_else(|e| match e {});
-    let mut card = ui::CardApp::new(SdCard::new(sd_device, DummyCsPin, Delay::new()), FixedTime);
+    let mut card = ui::CardApp::new(SdCard::new(sd_device, Delay::new()), FixedTime);
     let card_detect = Input::new(p.GPIO48, config);
 
     let bus = rust_m5paperdiy_examples::lcd_bus!(p, 16);

@@ -24,9 +24,17 @@ struct Ram(Rc<Switches>);
 #[derive(Debug)]
 struct Fault;
 
+impl core::fmt::Display for Fault {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("fault")
+    }
+}
+
+impl core::error::Error for Fault {}
+
 impl BlockDevice for Ram {
     type Error = Fault;
-    fn read(&self, blocks: &mut [Block], start: BlockIdx, _reason: &str) -> Result<(), Fault> {
+    fn read(&self, blocks: &mut [Block], start: BlockIdx) -> Result<(), Fault> {
         let data = self.0.data.borrow();
         for (i, block) in blocks.iter_mut().enumerate() {
             let o = (start.0 as usize + i) * 512;
@@ -118,7 +126,11 @@ fn root_entries(switches: &Switches) -> usize {
     let vol = mgr.open_raw_volume(VolumeIdx(0)).unwrap();
     let dir = mgr.open_root_dir(vol).unwrap();
     let mut n = 0;
-    mgr.iterate_dir(dir, |_| n += 1).unwrap();
+    mgr.iterate_dir(dir, |_| {
+        n += 1;
+        std::ops::ControlFlow::Continue(())
+    })
+    .unwrap();
     n
 }
 

@@ -37,7 +37,6 @@ use alloc::vec::Vec;
 use defmt::{error, info};
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use embedded_sdmmc::sdcard::DummyCsPin;
 use embedded_sdmmc::{BlockDevice, SdCard, TimeSource, Timestamp};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
@@ -57,6 +56,7 @@ const BUILD: &str = "Rust: epdpi blocking";
 mod ui {
     use alloc::vec::Vec;
     use core::fmt::Write;
+    use core::ops::ControlFlow;
     use embedded_graphics::{pixelcolor::Gray4, prelude::*};
     use embedded_sdmmc::{
         BlockDevice, Error, Mode, RawDirectory, TimeSource, VolumeIdx, VolumeManager,
@@ -119,7 +119,7 @@ mod ui {
         Io,
     }
 
-    fn io<E: core::fmt::Debug>(error: Error<E>) -> StoreError {
+    fn io<E: core::error::Error>(error: Error<E>) -> StoreError {
         match error {
             Error::NotFound => StoreError::NotFound,
             Error::DeviceError(_) | Error::NoSuchVolume | Error::FormatError(_) => {
@@ -144,8 +144,7 @@ mod ui {
         /// Size of the card in bytes, `None` when it does not answer.
         pub fn card_bytes(&mut self) -> Option<u64> {
             self.mgr
-                .device()
-                .num_blocks()
+                .device(|card| card.num_blocks())
                 .ok()
                 .map(|blocks| u64::from(blocks.0) * 512)
         }
@@ -201,11 +200,11 @@ mod ui {
                         || entry.size == 0
                         || entry.name.extension() != b"PNG"
                     {
-                        return;
+                        return ControlFlow::Continue(());
                     }
                     let mut name = ShortName::EMPTY;
                     if write!(name, "{}", entry.name).is_err() {
-                        return;
+                        return ControlFlow::Continue(());
                     }
                     // Keep the two best, in order.
                     let mut incoming = name;
@@ -221,6 +220,7 @@ mod ui {
                             }
                         }
                     }
+                    ControlFlow::Continue(())
                 })
                 .map_err(io)?;
                 Ok(slots)
@@ -488,7 +488,7 @@ fn main() -> ! {
     let cs = Output::new(p.GPIO47, Level::High, OutputConfig::default());
     // Infallible for an `Output` chip select.
     let device = ExclusiveDevice::new_no_delay(spi, cs).unwrap_or_else(|e| match e {});
-    let mut store = ui::Store::new(SdCard::new(device, DummyCsPin, Delay::new()), FixedTime);
+    let mut store = ui::Store::new(SdCard::new(device, Delay::new()), FixedTime);
 
     let bus = rust_m5paperdiy_examples::lcd_bus!(p, 16);
     let mut prev = vec![0xFFu8; Ed047tc1::FB_BYTES];
