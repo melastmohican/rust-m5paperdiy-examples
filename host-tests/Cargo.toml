@@ -3,7 +3,7 @@ name = "host-tests"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "Host tests for the hardware-free `mod ui` blocks of the factory_test, user_demo and sd_images examples"
+description = "Host tests for the hardware-free `mod ui` blocks of the factory_test, user_demo, sd_images and animated_smiles examples"
 
 # Its own root, so the examples crate above it never sees this package. Run it with `./run.sh`.
 [workspace]

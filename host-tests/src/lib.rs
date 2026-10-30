@@ -1,5 +1,5 @@
 //! Host tests for the hardware-free `mod ui` blocks of `examples/factory_test.rs`,
-//! `examples/user_demo.rs` and `examples/sd_images.rs`. `build.rs` copies each block out of its example, so what is
+//! `examples/user_demo.rs`, `examples/sd_images.rs` and `examples/animated_smiles.rs`. `build.rs` copies each block out of its example, so what is
 //! tested is the code the board runs. Run with `./run.sh`.
 
 extern crate alloc;
@@ -22,4 +22,9 @@ pub mod user_demo {
 /// The card access, image slots and picture of `sd_images`.
 pub mod sd_images {
     include!(concat!(env!("OUT_DIR"), "/sd_images_ui.rs"));
+}
+
+/// The G5 decoder, sprite and bouncing of `animated_smiles`.
+pub mod animated_smiles {
+    include!(concat!(env!("OUT_DIR"), "/animated_smiles_ui.rs"));
 }

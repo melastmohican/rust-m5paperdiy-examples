@@ -22,7 +22,7 @@ bring-up diagnostics in [bringup.md](bringup.md).
 
 | Name | Purpose | Status |
 | :--- | :--- | :--- |
-| no prefix | Ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | `display_demo`, `buttons`, `text_log_scroll`, `factory_test`, `user_demo`, `pm1_timer`, `sd_images`, all working, see [Ports](#ports-of-the-arduino-sketches) |
+| no prefix | Ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | `display_demo`, `buttons`, `text_log_scroll`, `factory_test`, `user_demo`, `pm1_timer`, `sd_images`, `animated_smiles`, all working, see [Ports](#ports-of-the-arduino-sketches) |
 | `poc_*`, `sdmc_spi`, `wifi_scan` | Proofs that a part works from Rust, with a log and no display | `poc_battery`, `sdmc_spi`, `wifi_scan`, all working |
 
 Every example says which build it is: a small `Rust: epdpi blocking` label on the screen (`epdpi async` in the
@@ -106,14 +106,14 @@ M5GFX's FreeSans, so letter shapes differ a little.
 | `M5PM1` | `pm1_timer` | Uses the power chip's timer: BtnA sets a power-on timer for 3 s and shuts the board down, so it restarts by itself, BtnB sets a power-off timer for 3 s. **It powers the board off.** The timer is cleared at start-up, so one armed by an earlier run cannot fire after a reboot |
 | `microSD` | `sd_images` | Appends a line to a log file and reads it back, then shows `PaperDIY_01.png` from the card, landscape, `M5Quality`. A shows the previous image, B the next, two in all. About 5 s each: 2 s to read the 1 MB file, 2.4 s to decode and dither it, 1 s to refresh. The card has no long file names here, so the images are the first two `.PNG` files in the root (`PaperDIY_01.png` shows as `PAPER~26.PNG`) and the log is `PAPERLOG.TXT` |
 | `PaperDIYUserDemo` | `user_demo` | The PAPER DIY poster with live widgets, all refreshed in small windows: battery voltage, a Wi-Fi list (A rescans), the microSD card with a 1 MiB write and read speed test (B runs it), A and B border feedback, and hold A and B for 2 s then 5 s to power off |
+| `FastEPD/animated_smiles` | `animated_smiles` | Eight 100 x 100 smileys bounce around the panel for 250 frames, landscape. The smiley is the sketch's own G5 file, decoded by a port of FastEPD's decoder. Each frame refreshes only what moved, with `FastMono`, about 300 ms; then the panel clears to white, with faint ghosts of the smileys left, and powers down. Like the sketch it never clears the screen, so two long diagonal lines per smiley build up and the panel slowly fills with them. The Arduino sketch gives the same animation and trails with FastEPD `main` but ends on a clean white panel, see [its README](https://github.com/melastmohican/m5paperdiy-arduino-examples#fastepd-example) |
 
 `user_demo` follows the sketch's rule that every 40th partial refresh is a full `M5Quality` one,
 to clear ghosting. It does not port the sketch's factory first-boot shutdown, which needs NVS.
 The sketches `EpdFastCounter`, `EpdModesCounter` and `EpdQualityRamp` are the references for the
 diagnostics on the `bringup` branch (see [bringup.md](bringup.md)).
 
-Sketches without a Rust example: `EpubReader` and `FastEPD/animated_smiles` (which does not work in
-Arduino either).
+The sketch without a Rust example is `EpubReader`.
 
 `poc_battery` reads the M5PM1 voltage registers (VBAT, VIN, 5VINOUT, VREF) once a second and
 matches M5Unified's `getBatteryVoltage()`. `sdmc_spi` opens the card over SPI at 20 MHz, lists the
@@ -123,7 +123,7 @@ root directory and times a read. `wifi_scan` scans every 5 s and logs the access
 
 - `src/main.rs`: the `Hello M5PaperDIY!` program.
 - `examples/display_demo.rs`, `buttons.rs`, `text_log_scroll.rs`, `factory_test.rs`,
-  `user_demo.rs`, `pm1_timer.rs`, `sd_images.rs`: the ports. `factory_test`, `user_demo` and `sd_images` keep their drawing and state
+  `user_demo.rs`, `pm1_timer.rs`, `sd_images.rs`, `animated_smiles.rs`: the ports. `factory_test`, `user_demo`, `sd_images` and `animated_smiles` keep their drawing and state
   machines in an inline `mod ui` block, which is the same text in the async twin.
 - `examples/poc_*.rs`, `examples/sdmc_spi.rs`, `examples/wifi_scan.rs`: parts proven from Rust.
 - `assets/`: `img_bg.png` and `img_logo.png`, M5Stack artwork copied from the Arduino sketch,

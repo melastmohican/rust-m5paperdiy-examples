@@ -66,7 +66,7 @@ impl TimeSource for Time {
 /// A card with these files and folders in the root.
 fn card(files: &[(&str, &[u8])], dirs: &[&str]) -> Store<Ram, Time> {
     let ram = Ram(Rc::new(RefCell::new(support::fat32_image())));
-    let mut mgr = VolumeManager::new(ram.clone(), Time);
+    let mgr = VolumeManager::new(ram.clone(), Time);
     let volume = mgr.open_raw_volume(VolumeIdx(0)).unwrap();
     let root = mgr.open_root_dir(volume).unwrap();
     for (name, data) in files {

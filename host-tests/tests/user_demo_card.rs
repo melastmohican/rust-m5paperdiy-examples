@@ -122,7 +122,7 @@ fn root_entries(switches: &Switches) -> usize {
         fail_writes: Cell::new(false),
         corrupt_reads: Cell::new(false),
     }));
-    let mut mgr = VolumeManager::new(ram, Time);
+    let mgr = VolumeManager::new(ram, Time);
     let vol = mgr.open_raw_volume(VolumeIdx(0)).unwrap();
     let dir = mgr.open_root_dir(vol).unwrap();
     let mut n = 0;
