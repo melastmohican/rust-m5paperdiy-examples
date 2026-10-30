@@ -3,7 +3,7 @@
 //! Uses the M5PM1 power chip's timer. BtnA (GPIO4) arms a power-on timer for 3 s and shuts the
 //! board down, so it switches itself back on 3 s later. BtnB (GPIO3) arms a power-off timer for
 //! 3 s, so the board switches itself off 3 s later. The async twin is `pm1_timer` in
-//! `rust-m5paperdiy-embassy-examples`.
+//! `async/`.
 //!
 //! **This example powers the board off.** To start it again after BtnB, press the PWR button.
 //!

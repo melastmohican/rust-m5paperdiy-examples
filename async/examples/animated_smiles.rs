@@ -1,10 +1,11 @@
-//! # animated_smiles: port of the FastEPD `animated_smiles` sketch (M5Stack PaperDIY)
+//! # animated_smiles: async port of the FastEPD `animated_smiles` sketch (M5Stack PaperDIY)
 //!
 //! Eight 100 x 100 smileys bounce around the panel, as in `~/Src/Arduino/M5PaperDIY/FastEPD/animated_smiles`
 //! (upstream `bitbank2/FastEPD`, `examples/Arduino/animated_smiles`). Each frame draws every smiley
 //! at its position, moves it 4 px and bounces it off the edges, then refreshes what changed. After
-//! 250 frames the panel is cleared to white and the board powers the panel down. The async twin is
-//! `animated_smiles` in `rust-m5paperdiy-embassy-examples`.
+//! 250 frames the panel is cleared to white and the board powers the panel down. The blocking twin
+//! is `animated_smiles` in `blocking/`. Here `epdpi` runs in async mode on the
+//! `esp-rtos` Embassy executor and a row waits for the DMA instead of spinning.
 //!
 //! The smiley is the sketch's own `smiley.h`: 240 bytes of G5 (CCITT group 4) data. `mod ui` has a
 //! small G5 decoder, a port of FastEPD's `g5dec.inl`, checked on the host against the output of the
@@ -18,7 +19,7 @@
 //!
 //! ## Expected
 //!
-//! - The log prints `animated_smiles: Rust, blocking`, then `frame N: refresh N ms` every 50
+//! - The log prints `animated_smiles: Rust, async`, then `frame N: refresh N ms` every 50
 //!   frames and, after 250 frames, `250 frames in N ms, N ms per frame`.
 //! - Landscape, 960 x 540, white. Eight smileys (black outline on a white square) move
 //!   diagonally in 4 px steps. The squares are opaque and the screen is never cleared, like the
@@ -39,11 +40,11 @@ extern crate alloc;
 
 use alloc::vec;
 use defmt::{error, info};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::delay::Delay;
 use esp_hal::rng::Rng;
-use esp_hal::time::Instant;
 use esp_println as _;
-use rust_m5paperdiy_examples::{epdpi::prelude::*, pmic};
+use rust_m5paperdiy_embassy_examples::{epdpi::prelude::*, pmic};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -509,15 +510,16 @@ mod ui {
     }
 }
 
-#[esp_hal::main]
-fn main() -> ! {
-    let p = rust_m5paperdiy_examples::init!();
-    let mut i2c = rust_m5paperdiy_examples::pmic_i2c!(p);
+#[esp_rtos::main]
+async fn main(_spawner: embassy_executor::Spawner) -> ! {
+    let p = rust_m5paperdiy_embassy_examples::init!();
+    rust_m5paperdiy_embassy_examples::start_rtos!(p);
+    let mut i2c = rust_m5paperdiy_embassy_examples::pmic_i2c!(p);
     let mut delay = Delay::new();
     let _ = pmic::epd_power_on(&mut i2c, &mut delay);
-    info!("animated_smiles: Rust, blocking");
+    info!("animated_smiles: Rust, async");
 
-    let bus = rust_m5paperdiy_examples::lcd_bus!(p, 16);
+    let bus = rust_m5paperdiy_embassy_examples::lcd_bus!(p, 16);
     let mut prev = vec![0x88u8; Ed047tc1::FB_BYTES];
     let mut line = vec![0u8; Ed047tc1::SCANLINE_BYTES];
     let mut fb_mem = vec![0xFFu8; Ed047tc1::FB_BYTES];
@@ -526,16 +528,16 @@ fn main() -> ! {
         EpdFrameBuffer::<Ed047tc1>::new(&mut fb_mem),
     ) else {
         error!("buffer allocation too small");
-        rust_m5paperdiy_examples::halt();
+        rust_m5paperdiy_embassy_examples::halt();
     };
     let Ok(sprite) = ui::Sprite::from_g5(&ui::SMILEY) else {
         error!("the smiley does not decode");
-        rust_m5paperdiy_examples::halt();
+        rust_m5paperdiy_embassy_examples::halt();
     };
 
     // `epaper.clearWhite()`: the panel and the buffer start white.
     let clear_start = Instant::now();
-    if display.clear().is_err() {
+    if display.clear().await.is_err() {
         error!("clear failed");
     }
     info!("clear at start: {} ms", clear_start.elapsed().as_millis());
@@ -553,6 +555,7 @@ fn main() -> ! {
         // `epaper.partialUpdate(true)`: refresh what was drawn since the last frame.
         if display
             .refresh_dirty(&mut fb, RefreshMode::FastMono)
+            .await
             .is_err()
         {
             error!("refresh failed");
@@ -573,13 +576,13 @@ fn main() -> ! {
         total / u64::from(ui::FRAMES)
     );
 
-    delay.delay_millis(3000);
+    Timer::after(Duration::from_secs(3)).await;
     // `epaper.clearWhite(false)` and `epaper.deInit()`.
     let clear_start = Instant::now();
-    if display.clear().is_err() {
+    if display.clear().await.is_err() {
         error!("final clear failed");
     }
     info!("final clear: {} ms", clear_start.elapsed().as_millis());
     let _ = pmic::epd_power_off(&mut i2c);
-    rust_m5paperdiy_examples::halt();
+    rust_m5paperdiy_embassy_examples::halt();
 }

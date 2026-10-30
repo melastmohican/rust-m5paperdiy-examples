@@ -1,0 +1,50 @@
+[package]
+edition      = "2024"
+name         = "rust-m5paperdiy-embassy-examples"
+rust-version = "1.88"
+version      = "0.1.0"
+license      = "GPL-3.0-only"
+description  = "Async (Embassy) hardware examples for the epdpi driver on the M5Stack PaperDIY (ESP32-S3, ED047TC1 e-paper)"
+keywords     = ["esp32s3", "epaper", "embassy", "m5stack", "paperdiy"]
+categories   = ["embedded", "no-std"]
+
+[dependencies]
+esp-hal                = { version = "~1.1.0", features = ["defmt", "esp32s3", "unstable"] }
+esp-rtos               = { version = "0.3.0", features = ["defmt", "embassy", "esp32s3", "esp-radio", "esp-alloc"] }
+esp-alloc              = { version = "0.10.0", features = ["defmt", "esp32s3"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["defmt", "esp32s3"] }
+esp-println            = { version = "0.17.0", features = ["defmt-espflash", "esp32s3"] }
+
+defmt              = "1.0.1"
+critical-section   = "1.2.0"
+embassy-executor   = { version = "0.10.0", features = ["defmt"] }
+embassy-time       = { version = "0.5.0", features = ["defmt"] }
+embedded-graphics  = "0.8.1"
+embedded-hal       = "1.0.0"
+
+# Sibling checkout, a workspace. Async API on purpose: `default-features = false` leaves out the
+# `blocking` feature, which is why this is its own project and not a member of
+# the blocking crate. Cargo would unify the two modes inside one workspace.
+epdpi     = { path = "../../epdpi/epdpi", default-features = false, features = ["defmt", "graphics"] }
+epdpi-esp = { path = "../../epdpi/epdpi-esp", default-features = false, features = ["esp32s3", "defmt"] }
+esp-radio = { version = "0.18.0", features = ["wifi", "esp32s3", "unstable", "defmt"] }
+
+[dev-dependencies]
+embassy-futures = "0.1.2"
+embedded-hal-bus = "0.2.0"
+embedded-sdmmc = "0.10.0"
+minipng = "1.0"
+profont = "0.7"
+u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
+
+# For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
+[profile.dev]
+# The default debug profile is too slow and too big for resource-constrained devices.
+# Always build with some optimizations enabled.
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1     # LLVM can perform better optimizations using a single thread
+debug         = 2     # prefer slower builds but better debugging experience
+lto           = 'fat'
+opt-level     = 's'

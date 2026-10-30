@@ -1,8 +1,9 @@
-//! # display_demo: port of the Arduino `Display` sketch (M5Stack PaperDIY)
+//! # display_demo: async port of the Arduino `Display` sketch (M5Stack PaperDIY)
 //!
 //! Draws the same screen as `~/Src/Arduino/M5PaperDIY/Display`: a triple black border, four
 //! centered lines of text and a bar of four cells (black, dark gray, light gray, black), with
-//! `RefreshMode::M5Quality`. The async twin is `display_demo` in `rust-m5paperdiy-embassy-examples`.
+//! `RefreshMode::M5Quality`. The blocking twin is `display_demo` in `blocking/`. Here `epdpi` runs in async
+//! mode on the `esp-rtos` Embassy executor and a row waits for the DMA instead of spinning.
 //!
 //! ## Run
 //!
@@ -12,14 +13,14 @@
 //!
 //! ## Expected
 //!
-//! - The log prints `refresh done in N ms`, about 1 s.
+//! - The log prints `refresh done in N ms`, about 1.1 s like the blocking example.
 //! - Portrait, 540 by 960, like the sketch (the buffer is turned with `Rotation::Deg270`). White
 //!   screen, three black borders 2 px apart, `PAPERDIY`, `Panel: ED047TC1`,
 //!   `Resolution: 540 x 960`, `16-Level Grayscale E-Paper`, then a four cell bar.
 //! - Differences from the Arduino sketch: `u8g2-fonts` Free Universal Bold instead of
 //!   FreeSansBold, close but not the same glyphs. The panel line says `ED047TC1`, the real
 //!   panel; the sketch prints `AXE544127`, which is the board's connector. A last line,
-//!   `Rust: epdpi blocking`, says which build a photo shows; the sketch has none.
+//!   `Rust: epdpi async`, says which build a photo shows; the sketch has none.
 #![no_std]
 #![no_main]
 
@@ -27,15 +28,15 @@ extern crate alloc;
 
 use alloc::vec;
 use defmt::{error, info};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::{
     pixelcolor::Gray4,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
 };
 use esp_hal::delay::Delay;
-use esp_hal::time::Instant;
 use esp_println as _;
-use rust_m5paperdiy_examples::{epdpi::prelude::*, pmic};
+use rust_m5paperdiy_embassy_examples::{epdpi::prelude::*, pmic};
 use u8g2_fonts::{
     FontRenderer, fonts,
     types::{FontColor, HorizontalAlignment, VerticalPosition},
@@ -98,19 +99,20 @@ fn draw_demo<D: DrawTarget<Color = Gray4> + OriginDimensions>(fb: &mut D) {
     centered(
         &FontRenderer::new::<fonts::u8g2_font_fub17_tf>(),
         h as i32 - 40,
-        format_args!("Rust: epdpi blocking"),
+        format_args!("Rust: epdpi async"),
         fb,
     );
 }
 
-#[esp_hal::main]
-fn main() -> ! {
-    let p = rust_m5paperdiy_examples::init!();
-    let mut i2c = rust_m5paperdiy_examples::pmic_i2c!(p);
+#[esp_rtos::main]
+async fn main(_spawner: embassy_executor::Spawner) -> ! {
+    let p = rust_m5paperdiy_embassy_examples::init!();
+    rust_m5paperdiy_embassy_examples::start_rtos!(p);
+    let mut i2c = rust_m5paperdiy_embassy_examples::pmic_i2c!(p);
     let mut delay = Delay::new();
     let _ = pmic::epd_power_on(&mut i2c, &mut delay);
 
-    let bus = rust_m5paperdiy_examples::lcd_bus!(p, 16);
+    let bus = rust_m5paperdiy_embassy_examples::lcd_bus!(p, 16);
     // M5GFX assumes every pixel starts at mid gray (0x88) and has no hard clear.
     let mut prev = vec![0x88u8; Ed047tc1::FB_BYTES];
     let mut line = vec![0u8; Ed047tc1::SCANLINE_BYTES];
@@ -120,7 +122,7 @@ fn main() -> ! {
         EpdFrameBuffer::<Ed047tc1>::new(&mut fb_mem),
     ) else {
         error!("buffer allocation too small");
-        rust_m5paperdiy_examples::halt();
+        rust_m5paperdiy_embassy_examples::halt();
     };
 
     fb.set_rotation(Rotation::Deg270);
@@ -129,17 +131,20 @@ fn main() -> ! {
     // As the M5GFX sketch does: a white background through the same waveform first.
     let mut white_mem = vec![0xFFu8; Ed047tc1::FB_BYTES];
     if let Ok(white) = EpdFrameBuffer::<Ed047tc1>::new(&mut white_mem)
-        && display.refresh(&white, RefreshMode::M5Quality).is_err()
+        && display
+            .refresh(&white, RefreshMode::M5Quality)
+            .await
+            .is_err()
     {
         error!("white refresh failed");
     }
 
     let start = Instant::now();
-    match display.refresh(&fb, RefreshMode::M5Quality) {
+    match display.refresh(&fb, RefreshMode::M5Quality).await {
         Ok(()) => info!("refresh done in {} ms", start.elapsed().as_millis()),
         Err(_) => error!("refresh failed"),
     }
     loop {
-        delay.delay_millis(1000);
+        Timer::after(Duration::from_secs(1)).await;
     }
 }

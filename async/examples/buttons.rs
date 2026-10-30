@@ -1,9 +1,10 @@
-//! # buttons: port of the Arduino `Button` sketch (M5Stack PaperDIY)
+//! # buttons: async port of the Arduino `Button` sketch (M5Stack PaperDIY)
 //!
 //! Shows `PaperDIY Button Test`, the last action and the pin numbers. Pressing BtnA (GPIO4) or
 //! BtnB (GPIO3, both active low) redraws the screen with `BtnA pressed` or `BtnB pressed`,
-//! through `RefreshMode::M5Text` like the sketch's `epd_text`. The async twin is `buttons` in
-//! `rust-m5paperdiy-embassy-examples`.
+//! through `RefreshMode::M5Text` like the sketch's `epd_text`. The blocking twin is `buttons` in
+//! `blocking/`. Here `epdpi` runs in async mode on the `esp-rtos` Embassy
+//! executor.
 //!
 //! ## Run
 //!
@@ -18,7 +19,7 @@
 //! - A press during an update is seen after it ends, as in the sketch.
 //! - Portrait, 540 by 960, like the sketch (the buffer is turned with `Rotation::Deg270`).
 //! - Differences from the Arduino sketch: `u8g2-fonts` Free Universal Bold instead of
-//!   FreeSansBold, close but not the same glyphs. A last line, `Rust: epdpi blocking`, says which build a
+//!   FreeSansBold, close but not the same glyphs. A last line, `Rust: epdpi async`, says which build a
 //!   photo shows; the sketch has none.
 #![no_std]
 #![no_main]
@@ -27,12 +28,12 @@ extern crate alloc;
 
 use alloc::vec;
 use defmt::{error, info};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Input, InputConfig, Pull};
-use esp_hal::time::Instant;
 use esp_println as _;
-use rust_m5paperdiy_examples::{epdpi::prelude::*, pmic};
+use rust_m5paperdiy_embassy_examples::{epdpi::prelude::*, pmic};
 use u8g2_fonts::{
     FontRenderer, fonts,
     types::{FontColor, HorizontalAlignment, VerticalPosition},
@@ -53,7 +54,7 @@ fn draw_status<D: DrawTarget<Color = Gray4> + OriginDimensions>(fb: &mut D, last
         (&small, last_action, h / 2 + 50),
         (&small, "BtnA: GPIO4   BtnB: GPIO3", h / 2 + 135),
         // Not in the sketch: says which build a photo shows.
-        (&tiny, "Rust: epdpi blocking", h - 40),
+        (&tiny, "Rust: epdpi async", h - 40),
     ] {
         let _ = font.render_aligned(
             text,
@@ -66,10 +67,11 @@ fn draw_status<D: DrawTarget<Color = Gray4> + OriginDimensions>(fb: &mut D, last
     }
 }
 
-#[esp_hal::main]
-fn main() -> ! {
-    let p = rust_m5paperdiy_examples::init!();
-    let mut i2c = rust_m5paperdiy_examples::pmic_i2c!(p);
+#[esp_rtos::main]
+async fn main(_spawner: embassy_executor::Spawner) -> ! {
+    let p = rust_m5paperdiy_embassy_examples::init!();
+    rust_m5paperdiy_embassy_examples::start_rtos!(p);
+    let mut i2c = rust_m5paperdiy_embassy_examples::pmic_i2c!(p);
     let mut delay = Delay::new();
     let _ = pmic::epd_power_on(&mut i2c, &mut delay);
 
@@ -77,7 +79,7 @@ fn main() -> ! {
     let btn_a = Input::new(p.GPIO4, cfg);
     let btn_b = Input::new(p.GPIO3, cfg);
 
-    let bus = rust_m5paperdiy_examples::lcd_bus!(p, 16);
+    let bus = rust_m5paperdiy_embassy_examples::lcd_bus!(p, 16);
     let mut prev = vec![0xFFu8; Ed047tc1::FB_BYTES];
     let mut line = vec![0u8; Ed047tc1::SCANLINE_BYTES];
     let mut fb_mem = vec![0xFFu8; Ed047tc1::FB_BYTES];
@@ -86,16 +88,16 @@ fn main() -> ! {
         EpdFrameBuffer::<Ed047tc1>::new(&mut fb_mem),
     ) else {
         error!("buffer allocation too small");
-        rust_m5paperdiy_examples::halt();
+        rust_m5paperdiy_embassy_examples::halt();
     };
 
     fb.set_rotation(Rotation::Deg270);
-    if display.clear().is_err() {
+    if display.clear().await.is_err() {
         error!("initial clear failed");
     }
     draw_status(&mut fb, "Press BtnA or BtnB");
     let start = Instant::now();
-    match display.refresh(&fb, RefreshMode::M5Text) {
+    match display.refresh(&fb, RefreshMode::M5Text).await {
         Ok(()) => info!("first draw in {} ms", start.elapsed().as_millis()),
         Err(_) => error!("first draw failed"),
     }
@@ -116,13 +118,13 @@ fn main() -> ! {
             info!("{}", text);
             draw_status(&mut fb, text);
             let start = Instant::now();
-            match display.refresh(&fb, RefreshMode::M5Text) {
+            match display.refresh(&fb, RefreshMode::M5Text).await {
                 Ok(()) => info!("update in {} ms", start.elapsed().as_millis()),
                 Err(_) => error!("update failed"),
             }
         }
         // Keep the pre-update state, so a press during the 0.7 s update is an edge next time.
         (was_a, was_b) = (now_a, now_b);
-        delay.delay_millis(20);
+        Timer::after(Duration::from_millis(20)).await;
     }
 }

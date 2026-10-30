@@ -1,0 +1,17 @@
+[package]
+name = "m5paperdiy-common"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+description = "Hardware-free code shared by the blocking and async M5Stack PaperDIY examples"
+
+# Its own Cargo root, like `blocking/`, `async/` and `host-tests/`, so no features are unified between them.
+[workspace]
+
+[features]
+default = ["blocking"]
+# The blocking and async APIs of `epdpi` are mutually exclusive. If this crate ever depends on `epdpi`, do
+# it as `default-features = false` and forward this feature (`blocking = ["epdpi/blocking"]`), like
+# `epdpi-esp` does, so an async user never gets the core switched into blocking mode.
+blocking = []

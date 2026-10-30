@@ -86,14 +86,15 @@ These cost time to find. They are recorded here so the next person does not repe
 
 ## Host tests
 
-`host-tests/` is a separate crate with 51 tests for the hardware-free code of `factory_test`,
-`user_demo` and `sd_images`: the Game of Life, button handling, the dither, the widgets' state machines, the card
+`host-tests/` is a separate crate with 63 tests for the hardware-free code of `factory_test`,
+`user_demo`, `sd_images` and `animated_smiles` (the G5 image decoder and the bouncing smileys too): the Game of Life, button handling, the dither, the widgets' state machines, the card
 speed test, the image search and the log file against a RAM disk holding a FAT32 volume, and the power-off timing. A build script
 copies the `mod ui` block out of each example, so the tests run the code the board runs.
 
 ```bash
-host-tests/run.sh                    # all tests
-UI_DUMP=/some/dir host-tests/run.sh  # also writes the rendered pages as .pgm and .raw files
+host-tests/run.sh                         # all tests, epdpi in blocking mode
+host-tests/run.sh --no-default-features   # the same tests, epdpi in async mode
+UI_DUMP=/some/dir host-tests/run.sh       # also writes the rendered pages as .pgm and .raw files
 ```
 
 Use `run.sh` and not `cargo test` inside the folder: `.cargo/config.toml` here forces the ESP

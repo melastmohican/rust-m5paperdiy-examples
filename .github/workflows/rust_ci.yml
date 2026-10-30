@@ -15,23 +15,35 @@ env:
 
 jobs:
   rust-checks:
-    name: Rust Checks
+    name: ${{ matrix.crate }} ${{ matrix.command }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        action:
-          - command: build
+        include:
+          - crate: blocking
+            command: build
             args: --bins --examples --release
-          - command: fmt
+          - crate: blocking
+            command: fmt
             args: --all -- --check
-          - command: clippy
+          - crate: blocking
+            command: clippy
             args: --bins --examples --workspace -- -D warnings
+          - crate: async
+            command: build
+            args: --lib --examples --release
+          - crate: async
+            command: fmt
+            args: --all -- --check
+          - crate: async
+            command: clippy
+            args: --lib --examples -- -D warnings
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
       - name: Fetch sibling epdpi checkout
-        # Cargo.toml depends on `../epdpi` by path until the crate is published.
+        # Both crates depend on `../../epdpi` by path until the crate is published.
         run: git clone --depth 1 https://github.com/melastmohican/epdpi ../epdpi
       - name: Setup Rust
         uses: esp-rs/xtensa-toolchain@v1.5
@@ -41,28 +53,36 @@ jobs:
           ldproxy: false
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.crate }}
       - name: Run command
-        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
+        working-directory: ${{ matrix.crate }}
+        run: cargo ${{ matrix.command }} ${{ matrix.args }}
 
   host-tests:
-    name: Host tests
+    name: Host tests (${{ matrix.mode }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: blocking
+            args: ""
+          - mode: async
+            args: --no-default-features
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-      - name: Fetch sibling checkouts
-        # host-tests/Cargo.toml depends on ../../epdpi by path, and the async_copy test compares the
-        # `mod ui` blocks against ../../rust-m5paperdiy-embassy-examples.
-        run: |
-          git clone --depth 1 https://github.com/melastmohican/epdpi ../epdpi
-          git clone --depth 1 https://github.com/melastmohican/rust-m5paperdiy-embassy-examples ../rust-m5paperdiy-embassy-examples
+      - name: Fetch sibling epdpi checkout
+        # host-tests depends on ../../epdpi by path.
+        run: git clone --depth 1 https://github.com/melastmohican/epdpi ../epdpi
       - name: Setup Rust
         # Host toolchain, not the esp one: run.sh starts cargo from a neutral directory, so the
-        # repo's rust-toolchain.toml and .cargo/config.toml do not apply.
+        # crates' rust-toolchain.toml and .cargo/config.toml do not apply.
         uses: dtolnay/rust-toolchain@stable
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: host-tests
       - name: Run host tests
-        run: ./host-tests/run.sh
+        run: ./host-tests/run.sh ${{ matrix.args }}
