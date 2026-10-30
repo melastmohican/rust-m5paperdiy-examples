@@ -1,6 +1,6 @@
 # rust-m5paperdiy-examples
 
-Hardware bring-up examples for `../epdpi` (crates `epdpi` and `epdpi-esp`) on the M5Stack PaperDIY (ESP32-S3, ED047TC1).
+Board examples for `../epdpi` (crates `epdpi` and `epdpi-esp`) on the M5Stack PaperDIY (ESP32-S3, ED047TC1).
 Layout mirrors `../rust-reterminal-e1002-examples`.
 
 ## Commands
@@ -23,21 +23,23 @@ dependency set for an example's sake.
 
 ## Naming
 
-- `examples/epdpi_*.rs` are diagnostics for the `epdpi` library. Keep them small and keep
-  each one's header comment current (what it tests, how to run, expected result, failure
-  meaning).
-- Real board examples ported from [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) take no prefix. See the porting
-  plan in README.md.
+- Examples ported from [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) take no prefix
+  and live in `examples/` on `main`. Every port also gets an async twin of the same name in
+  `../rust-m5paperdiy-embassy-examples`. Proofs that a part works take `poc_` (or a plain name like `wifi_scan`).
+- `epdpi_*` diagnostics (the bring-up programs for the `epdpi` library) are **not on `main`**. They live on the `bringup` branch,
+  described in `bringup.md`. Add new diagnostics there, keep them small, and keep each one's header comment current (what it
+  tests, how to run, expected result, failure meaning).
 
 ## Rules
 
-- `src/lib.rs` holds the pin map, `init!` (PSRAM heap), `display_pins!`, and the M5PM1
-  sequence in `pmic`. Examples stay short by using these.
+- `src/lib.rs` holds the pin map, `init!` (PSRAM heap), `lcd_bus!`, and the M5PM1
+  sequence in `pmic`. Examples stay short by using these. `display_pins!`, `Bus`, `FastBus`, `into_bus()` and
+  `into_fast_bus()` are used only by the diagnostics on the `bringup` branch.
 - M5PM1 is at I2C **0x6E**. The design doc's 0x6F is the M5IOE1 expander on other boards.
 - Examples use the blocking `epdpi` API with `esp_hal::delay::Delay`; the bus needs
   microsecond delays.
 - Use `lcd_bus!(p, 16)` (the `LCD_CAM` DMA bus) for anything that must match M5GFX's grays, `into_fast_bus()` otherwise. The portable bus (`into_bus()`) has a row
-  time about 15x too long for the 16-gray waveform. See README "What was learned".
+  time about 15x too long for the 16-gray waveform. See `bringup.md`.
 - Power-cycle after an interrupted refresh before judging the next run.
 - Never `git add .` in the parent `~/Src` repo. This directory is its own repo.
 - Keep `esp-alloc` on the version `esp-radio` and `esp-rtos` use (0.10; check

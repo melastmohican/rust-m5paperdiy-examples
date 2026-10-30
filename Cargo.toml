@@ -33,7 +33,6 @@ embedded-sdmmc = "0.7.0"
 esp-radio = { version = "0.18.0", features = ["wifi", "esp32s3", "unstable", "defmt"] }
 esp-rtos = { version = "0.3.0", features = ["defmt", "esp32s3", "esp-radio", "esp-alloc"] }
 minipng = "1.0"
-profont = "0.7"
 u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
