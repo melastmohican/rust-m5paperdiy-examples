@@ -534,9 +534,11 @@ fn main() -> ! {
     };
 
     // `epaper.clearWhite()`: the panel and the buffer start white.
+    let clear_start = Instant::now();
     if display.clear().is_err() {
         error!("clear failed");
     }
+    info!("clear at start: {} ms", clear_start.elapsed().as_millis());
     fb.clear_dirty();
 
     let rng = Rng::new();
@@ -573,9 +575,11 @@ fn main() -> ! {
 
     delay.delay_millis(3000);
     // `epaper.clearWhite(false)` and `epaper.deInit()`.
+    let clear_start = Instant::now();
     if display.clear().is_err() {
         error!("final clear failed");
     }
+    info!("final clear: {} ms", clear_start.elapsed().as_millis());
     let _ = pmic::epd_power_off(&mut i2c);
     rust_m5paperdiy_examples::halt();
 }
