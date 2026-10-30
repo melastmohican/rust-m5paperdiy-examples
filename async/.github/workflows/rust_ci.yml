@@ -1,0 +1,45 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/README.md"
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  rust-checks:
+    name: Rust Checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        action:
+          - command: build
+            args: --lib --examples --release
+          - command: fmt
+            args: --all -- --check
+          - command: clippy
+            args: --lib --examples -- -D warnings
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Fetch sibling epdpi checkout
+        # Cargo.toml depends on `../epdpi` by path until the crate is published.
+        run: git clone --depth 1 https://github.com/melastmohican/epdpi ../epdpi
+      - name: Setup Rust
+        uses: esp-rs/xtensa-toolchain@v1.5
+        with:
+          default: true
+          buildtargets: esp32s3
+          ldproxy: false
+      - name: Enable caching
+        uses: Swatinem/rust-cache@v2
+      - name: Run command
+        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
