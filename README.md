@@ -1,5 +1,9 @@
 # rust-m5paperdiy-examples
 
+> **This is the `bringup` branch.** It keeps the bring-up diagnostics (`epdpi_*`) and the host tests exactly as they were
+> when `main` still carried them. `main` holds the ports of the Arduino sketches, and its `bringup.md` describes these
+> diagnostics. Run them from here: `git checkout bringup`, then `cargo run --release --example epdpi_pmic_probe`.
+
 Rust examples for the **M5Stack PaperDIY** (ESP32-S3, 4.7" ED047TC1 960 x 540 e-paper,
 16 grays, two buttons, microSD, M5PM1 power chip), built on the
 [`epdpi`](../epdpi) driver. Each file in `examples/` is a complete `no_std` image. Every port
