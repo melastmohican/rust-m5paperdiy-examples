@@ -43,3 +43,26 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Run command
         run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
+
+  host-tests:
+    name: Host tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Fetch sibling checkouts
+        # host-tests/Cargo.toml depends on ../../epdpi by path, and the async_copy test compares the
+        # `mod ui` blocks against ../../rust-m5paperdiy-embassy-examples.
+        run: |
+          git clone --depth 1 https://github.com/melastmohican/epdpi ../epdpi
+          git clone --depth 1 https://github.com/melastmohican/rust-m5paperdiy-embassy-examples ../rust-m5paperdiy-embassy-examples
+      - name: Setup Rust
+        # Host toolchain, not the esp one: run.sh starts cargo from a neutral directory, so the
+        # repo's rust-toolchain.toml and .cargo/config.toml do not apply.
+        uses: dtolnay/rust-toolchain@stable
+      - name: Enable caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host-tests
+      - name: Run host tests
+        run: ./host-tests/run.sh
