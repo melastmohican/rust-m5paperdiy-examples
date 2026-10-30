@@ -3,8 +3,8 @@
 //! The M5Stack PaperDIY demo: a 540 by 960 poster with live widgets on top, refreshed in small
 //! windows. It is ported in stages, see the `user_demo` item in the `epdpi` backlog.
 //!
-//! **Stages 1 and 2 (this file):** the background image, the BtnA and BtnB border feedback and
-//! the battery voltage. The
+//! **Stages 1 to 3 (this file):** the background image, the BtnA and BtnB border feedback, the
+//! battery voltage and the card box. The
 //! async twin is `user_demo` in `rust-m5paperdiy-embassy-examples`.
 //!
 //! ## Run
@@ -23,7 +23,13 @@
 //! - **Stage 2:** the battery box on the poster shows the voltage, `4.03V`, from the first
 //!   frame and updates every 10 s (10 samples averaged) with `RefreshMode::M5Text`, only when the
 //!   text changes and never while a button is down. The log prints `battery 4.03V: refresh N ms`.
-//! - Not in this stage: Wi-Fi list, card test and the power-off dialog.
+//! - **Stage 3:** the card box (`NO TF CARD`, or the card type, size and `WRITE`/`READ` speeds)
+//!   follows the card detect pin (GPIO48) every 500 ms. A click of BtnB (a release, with both
+//!   buttons up) shows `TESTING...` and writes then reads back a 1 MiB file in 16 KiB chunks,
+//!   one chunk per loop pass so the buttons keep working, then shows the speeds. The test file
+//!   is deleted afterwards.
+//! - Every 40th partial refresh is a full `M5Quality` one, to clear ghosting, as in the sketch.
+//! - Not in this stage: Wi-Fi list and the power-off dialog.
 //! - The artwork is M5Stack's, copied from the Arduino sketch (`assets/img_bg.png`).
 #![no_std]
 #![no_main]
@@ -33,10 +39,17 @@ extern crate alloc;
 use alloc::vec;
 use defmt::{error, info};
 use embedded_hal::delay::DelayNs;
+use embedded_hal::digital::OutputPin;
 use embedded_hal::i2c::I2c;
+use embedded_hal::spi::SpiDevice;
+use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_sdmmc::sdcard::{CardType, DummyCsPin};
+use embedded_sdmmc::{SdCard, TimeSource, Timestamp};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::{Input, InputConfig, Pull};
-use esp_hal::time::Instant;
+use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
+use esp_hal::spi::Mode as SpiMode;
+use esp_hal::spi::master::{Config as SpiConfig, Spi};
+use esp_hal::time::{Instant, Rate};
 use esp_println as _;
 use rust_m5paperdiy_examples::{epdpi, pmic};
 
@@ -53,6 +66,10 @@ mod ui {
     use core::fmt::Write;
 
     use embedded_graphics::{pixelcolor::Gray4, prelude::*};
+    use embedded_sdmmc::{
+        BlockDevice, Error, Mode, RawDirectory, RawFile, RawVolume, TimeSource, VolumeIdx,
+        VolumeManager,
+    };
     use u8g2_fonts::{
         FontRenderer, fonts,
         types::{FontColor, HorizontalAlignment, VerticalPosition},
@@ -301,6 +318,629 @@ mod ui {
             fb,
         );
     }
+
+    /// Every 40th partial refresh becomes a full `M5Quality` one to clear ghosting, like the
+    /// sketch's `PARTIAL_REFRESH_LIMIT`.
+    #[derive(Default)]
+    pub struct Partials(u32);
+
+    impl Partials {
+        pub const LIMIT: u32 = 40;
+
+        /// Counts one partial refresh. True when this one must be a full refresh instead.
+        pub fn bump(&mut self) -> bool {
+            self.0 += 1;
+            if self.0 >= Self::LIMIT {
+                self.0 = 0;
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    /// Turns button releases into clicks, the way the sketch's HAL does: a click is acted on
+    /// once both buttons are up.
+    #[derive(Default)]
+    pub struct Clicks {
+        a_down: bool,
+        b_down: bool,
+        pending_a: bool,
+        pending_b: bool,
+    }
+
+    impl Clicks {
+        /// Feed the current button states. Returns `(a_clicked, b_clicked)`.
+        pub fn update(&mut self, a: bool, b: bool) -> (bool, bool) {
+            self.pending_a |= self.a_down && !a;
+            self.pending_b |= self.b_down && !b;
+            self.a_down = a;
+            self.b_down = b;
+            if a || b {
+                return (false, false);
+            }
+            let clicks = (self.pending_a, self.pending_b);
+            self.pending_a = false;
+            self.pending_b = false;
+            clicks
+        }
+    }
+
+    /// The card info box on the poster.
+    pub const CARD_X: i32 = 121;
+    pub const CARD_Y: i32 = 730;
+    pub const CARD_W: i32 = 418 - CARD_X;
+    pub const CARD_H: i32 = 831 - CARD_Y;
+
+    const TEST_SIZE: usize = 1024 * 1024;
+    const CHUNK: usize = 16 * 1024;
+    const POLL_MS: u64 = 500;
+
+    /// What the card test writes: the sketch's `testPattern`.
+    fn pattern(i: usize) -> u8 {
+        (i * 31 + 17) as u8
+    }
+
+    /// A card that can be forgotten and asked what it is, on top of reading blocks.
+    pub trait Card: BlockDevice {
+        /// The kind of card once it answers, `None` when it does not.
+        fn kind(&self) -> Option<&'static str>;
+        /// Forget the card so the next access starts it again, after a removal.
+        fn forget(&self);
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum Status {
+        NoCard,
+        Mounted,
+        MountFailed,
+    }
+
+    #[derive(Clone, Copy)]
+    pub struct Info {
+        pub status: Status,
+        pub kind: &'static str,
+        pub bytes: u64,
+    }
+
+    /// The outcome of a speed test.
+    #[derive(Clone, Copy)]
+    pub struct BenchResult {
+        pub success: bool,
+        pub write_mibs: f32,
+        pub read_mibs: f32,
+        pub message: &'static str,
+    }
+
+    impl BenchResult {
+        pub const NONE: Self = Self {
+            success: false,
+            write_mibs: 0.0,
+            read_mibs: 0.0,
+            message: "",
+        };
+
+        fn failed(message: &'static str) -> Self {
+            Self {
+                message,
+                ..Self::NONE
+            }
+        }
+    }
+
+    /// What the card box shows next.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum CardDraw {
+        /// The card info and the last speeds.
+        Info,
+        /// `TESTING...` while the speed test runs.
+        Testing,
+    }
+
+    /// MiB per second for `bytes` moved in `micros`.
+    fn throughput(bytes: usize, micros: u64) -> f32 {
+        if micros == 0 {
+            return 0.0;
+        }
+        bytes as f32 * 1_000_000.0 / (micros as f32 * 1024.0 * 1024.0)
+    }
+
+    /// The speed test, a file of 1 MiB written and read back in 16 KiB chunks, one chunk per
+    /// call to [`step`](Self::step) so the loop stays alive. Only the card calls are timed.
+    struct Bench {
+        buf: alloc::boxed::Box<[u8; CHUNK]>,
+        volume: RawVolume,
+        dir: RawDirectory,
+        file: RawFile,
+        name: Text,
+        reading: bool,
+        offset: usize,
+        write_us: u64,
+        read_us: u64,
+    }
+
+    impl Bench {
+        fn start<D: Card, T: TimeSource, C: FnMut() -> u64>(
+            mgr: &mut VolumeManager<D, T>,
+            mut clock: C,
+        ) -> Result<Self, &'static str> {
+            let volume = mgr
+                .open_raw_volume(VolumeIdx(0))
+                .map_err(|_| "OPEN FAILED")?;
+            let Ok(dir) = mgr.open_root_dir(volume) else {
+                let _ = mgr.close_volume(volume);
+                return Err("OPEN FAILED");
+            };
+            // A name that is free, so no user file is touched.
+            let mut name = Text::new();
+            let mut free = false;
+            for attempt in 0..4u64 {
+                let mut candidate = Text::new();
+                let suffix = (clock() / 1000 + attempt) & 0xF_FFFF;
+                let _ = write!(candidate, "PDT{suffix:05X}.BIN");
+                if matches!(
+                    mgr.find_directory_entry(dir, candidate.as_str()),
+                    Err(Error::NotFound)
+                ) {
+                    name = candidate;
+                    free = true;
+                    break;
+                }
+            }
+            let file = if free {
+                mgr.open_file_in_dir(dir, name.as_str(), Mode::ReadWriteCreate)
+                    .ok()
+            } else {
+                None
+            };
+            let Some(file) = file else {
+                let _ = mgr.close_dir(dir);
+                let _ = mgr.close_volume(volume);
+                return Err("OPEN FAILED");
+            };
+            let mut buf = alloc::boxed::Box::new([0u8; CHUNK]);
+            for (i, byte) in buf.iter_mut().enumerate() {
+                *byte = pattern(i);
+            }
+            Ok(Self {
+                buf,
+                volume,
+                dir,
+                file,
+                name,
+                reading: false,
+                offset: 0,
+                write_us: 0,
+                read_us: 0,
+            })
+        }
+
+        /// Closes everything and deletes the test file. Errors are ignored: it is the way out.
+        fn finish<D: Card, T: TimeSource>(&mut self, mgr: &mut VolumeManager<D, T>, close: bool) {
+            if close {
+                let _ = mgr.close_file(self.file);
+            }
+            let _ = mgr.delete_file_in_dir(self.dir, self.name.as_str());
+            let _ = mgr.close_dir(self.dir);
+            let _ = mgr.close_volume(self.volume);
+        }
+
+        /// One chunk of work. `Some` when the test is over.
+        fn step<D: Card, T: TimeSource, C: FnMut() -> u64>(
+            &mut self,
+            mgr: &mut VolumeManager<D, T>,
+            mut clock: C,
+        ) -> Option<BenchResult> {
+            if !self.reading {
+                let start = clock();
+                if mgr.write(self.file, &self.buf[..]).is_err() {
+                    self.finish(mgr, true);
+                    return Some(BenchResult::failed("WRITE FAILED"));
+                }
+                self.write_us += clock() - start;
+                self.offset += CHUNK;
+                if self.offset < TEST_SIZE {
+                    return None;
+                }
+                // Closing flushes the file, which counts as writing.
+                let start = clock();
+                if mgr.close_file(self.file).is_err() {
+                    self.finish(mgr, false);
+                    return Some(BenchResult::failed("WRITE FAILED"));
+                }
+                self.write_us += clock() - start;
+                match mgr.open_file_in_dir(self.dir, self.name.as_str(), Mode::ReadOnly) {
+                    Ok(file) => {
+                        self.file = file;
+                        self.reading = true;
+                        self.offset = 0;
+                        None
+                    }
+                    Err(_) => {
+                        self.finish(mgr, false);
+                        Some(BenchResult::failed("READ OPEN FAILED"))
+                    }
+                }
+            } else {
+                let start = clock();
+                let read = mgr.read(self.file, &mut self.buf[..]);
+                let verified = matches!(read, Ok(CHUNK))
+                    && self.buf.iter().enumerate().all(|(i, &b)| b == pattern(i));
+                self.read_us += clock() - start;
+                if !verified {
+                    self.finish(mgr, true);
+                    return Some(BenchResult::failed("READ VERIFY FAILED"));
+                }
+                self.offset += CHUNK;
+                if self.offset < TEST_SIZE {
+                    return None;
+                }
+                self.finish(mgr, true);
+                Some(BenchResult {
+                    success: true,
+                    write_mibs: throughput(TEST_SIZE, self.write_us),
+                    read_mibs: throughput(TEST_SIZE, self.read_us),
+                    message: "OK",
+                })
+            }
+        }
+    }
+
+    /// The card widget, the `AppTfCard` of the sketch: shows the card, watches for it being
+    /// removed or inserted every 500 ms, and runs the speed test when B is clicked.
+    pub struct CardApp<D: Card, T: TimeSource> {
+        mgr: VolumeManager<D, T>,
+        info: Info,
+        mounted: bool,
+        last_poll_ms: u64,
+        drawn: bool,
+        last_status: Status,
+        bench: Option<Bench>,
+        result: BenchResult,
+    }
+
+    impl<D: Card, T: TimeSource> CardApp<D, T> {
+        pub fn new(device: D, time: T) -> Self {
+            Self {
+                mgr: VolumeManager::new(device, time),
+                info: Info {
+                    status: Status::NoCard,
+                    kind: "",
+                    bytes: 0,
+                },
+                mounted: false,
+                last_poll_ms: 0,
+                drawn: false,
+                last_status: Status::NoCard,
+                bench: None,
+                result: BenchResult::NONE,
+            }
+        }
+
+        pub fn info(&self) -> &Info {
+            &self.info
+        }
+
+        pub fn result(&self) -> &BenchResult {
+            &self.result
+        }
+
+        /// Looks at the card once and says to draw it, for the first frame.
+        pub fn begin(&mut self, now_ms: u64, det_low: bool) -> CardDraw {
+            self.update_card(now_ms, det_low, true, false);
+            CardDraw::Info
+        }
+
+        /// Call every few milliseconds. `det_low` is the card detect pin (low means inserted),
+        /// `b_clicked` a click of B, `clock` microseconds for timing the test. Returns what to
+        /// draw when the box changed.
+        pub fn update<C: FnMut() -> u64>(
+            &mut self,
+            now_ms: u64,
+            det_low: bool,
+            b_clicked: bool,
+            clock: C,
+        ) -> Option<CardDraw> {
+            if let Some(bench) = &mut self.bench {
+                let done = bench.step(&mut self.mgr, clock)?;
+                self.bench = None;
+                self.result = done;
+                return Some(CardDraw::Info);
+            }
+            if b_clicked {
+                let changed = self.update_card(now_ms, det_low, false, true);
+                if self.info.status != Status::Mounted {
+                    return changed.then_some(CardDraw::Info);
+                }
+                return match Bench::start(&mut self.mgr, clock) {
+                    Ok(bench) => {
+                        self.bench = Some(bench);
+                        Some(CardDraw::Testing)
+                    }
+                    Err(message) => {
+                        self.result = BenchResult::failed(message);
+                        Some(CardDraw::Info)
+                    }
+                };
+            }
+            if now_ms - self.last_poll_ms >= POLL_MS
+                && self.update_card(now_ms, det_low, false, false)
+            {
+                return Some(CardDraw::Info);
+            }
+            None
+        }
+
+        /// Reads the card state. True when the box must be drawn.
+        fn update_card(&mut self, now_ms: u64, det_low: bool, force: bool, retry: bool) -> bool {
+            self.last_poll_ms = now_ms;
+            let previous = self.info.status;
+            self.refresh_info(det_low, retry);
+            if self.info.status != previous {
+                self.result = BenchResult::NONE;
+            }
+            if force || !self.drawn || self.info.status != self.last_status {
+                self.last_status = self.info.status;
+                self.drawn = true;
+                return true;
+            }
+            false
+        }
+
+        fn refresh_info(&mut self, det_low: bool, retry: bool) {
+            if !det_low {
+                if self.mounted {
+                    self.mgr.device().forget();
+                    self.mounted = false;
+                }
+                self.info = Info {
+                    status: Status::NoCard,
+                    kind: "",
+                    bytes: 0,
+                };
+                return;
+            }
+            if self.mounted || (self.info.status == Status::MountFailed && !retry) {
+                return;
+            }
+            self.info = Info {
+                status: Status::MountFailed,
+                kind: "",
+                bytes: 0,
+            };
+            self.mgr.device().forget();
+            let Some(kind) = self.mgr.device().kind() else {
+                return;
+            };
+            // The filesystem has to be there too, like `SD.begin`.
+            match self.mgr.open_raw_volume(VolumeIdx(0)) {
+                Ok(volume) => {
+                    let _ = self.mgr.close_volume(volume);
+                }
+                Err(_) => return,
+            }
+            let Ok(blocks) = self.mgr.device().num_blocks() else {
+                return;
+            };
+            self.info = Info {
+                status: Status::Mounted,
+                kind,
+                bytes: u64::from(blocks.0) * 512,
+            };
+            self.mounted = true;
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn text(
+        fb: &mut Fb<'_>,
+        font: &FontRenderer,
+        args: core::fmt::Arguments,
+        x: i32,
+        y: i32,
+        h: HorizontalAlignment,
+        v: VerticalPosition,
+    ) {
+        let _ = font.render_aligned(
+            args,
+            Point::new(x, y),
+            v,
+            h,
+            FontColor::Transparent(Gray4::new(0)),
+            fb,
+        );
+    }
+
+    /// Clears the card box and draws `what` in it: the sketch's `drawInfo` and `drawStatus`.
+    pub fn draw_card(fb: &mut Fb<'_>, info: &Info, result: &BenchResult, what: CardDraw) {
+        use HorizontalAlignment::{Center, Left, Right};
+        use VerticalPosition::Center as Middle;
+        fill(fb, CARD_X, CARD_Y, CARD_W, CARD_H, 15);
+        let (mid_x, mid_y) = (CARD_X + CARD_W / 2, CARD_Y + CARD_H / 2);
+        let medium = FontRenderer::new::<fonts::u8g2_font_helvR18_tf>();
+        let small = FontRenderer::new::<fonts::u8g2_font_helvR12_tf>();
+        let bold = FontRenderer::new::<fonts::u8g2_font_fub17_tf>();
+        if what == CardDraw::Testing {
+            text(
+                fb,
+                &medium,
+                format_args!("TESTING..."),
+                mid_x,
+                mid_y,
+                Center,
+                Middle,
+            );
+            return;
+        }
+        match info.status {
+            Status::NoCard => text(
+                fb,
+                &bold,
+                format_args!("NO TF CARD"),
+                mid_x,
+                mid_y,
+                Center,
+                Middle,
+            ),
+            Status::MountFailed => text(
+                fb,
+                &bold,
+                format_args!("TF INIT FAILED"),
+                mid_x,
+                mid_y,
+                Center,
+                Middle,
+            ),
+            Status::Mounted => {
+                let left = CARD_X + 7;
+                let right = CARD_X + CARD_W - 7;
+                let content_w = right - left;
+                let gap = 14;
+                let column_w = (content_w - gap) / 2;
+                let right_column = left + column_w + gap;
+                let header_y = CARD_Y + 20;
+                let divider_y = CARD_Y + 40;
+                let label_y = CARD_Y + 55;
+                let value_y = CARD_Y + 79;
+                text(
+                    fb,
+                    &medium,
+                    format_args!("{}", info.kind),
+                    left + 13,
+                    header_y,
+                    Left,
+                    Middle,
+                );
+                text(
+                    fb,
+                    &medium,
+                    format_args!("{:.1} GB", info.bytes as f32 / (1024.0 * 1024.0 * 1024.0)),
+                    right - 13,
+                    header_y,
+                    Right,
+                    Middle,
+                );
+                fill(fb, left, divider_y, content_w, 1, 10);
+                if !result.message.is_empty() && !result.success {
+                    text(
+                        fb,
+                        &small,
+                        format_args!("TEST FAILED"),
+                        mid_x,
+                        label_y,
+                        Center,
+                        Middle,
+                    );
+                    text(
+                        fb,
+                        &medium,
+                        format_args!("{}", result.message),
+                        mid_x,
+                        value_y,
+                        Center,
+                        Middle,
+                    );
+                } else {
+                    fill(
+                        fb,
+                        mid_x,
+                        divider_y + 8,
+                        1,
+                        CARD_H - (divider_y - CARD_Y) - 15,
+                        10,
+                    );
+                    let write_x = left + column_w / 2;
+                    let read_x = right_column + column_w / 2;
+                    text(
+                        fb,
+                        &small,
+                        format_args!("WRITE"),
+                        write_x,
+                        label_y,
+                        Center,
+                        Middle,
+                    );
+                    text(
+                        fb,
+                        &small,
+                        format_args!("READ"),
+                        read_x,
+                        label_y,
+                        Center,
+                        Middle,
+                    );
+                    if result.success {
+                        text(
+                            fb,
+                            &medium,
+                            format_args!("{:.2} MB/s", result.write_mibs),
+                            write_x,
+                            value_y,
+                            Center,
+                            Middle,
+                        );
+                        text(
+                            fb,
+                            &medium,
+                            format_args!("{:.2} MB/s", result.read_mibs),
+                            read_x,
+                            value_y,
+                            Center,
+                            Middle,
+                        );
+                    } else {
+                        text(
+                            fb,
+                            &medium,
+                            format_args!("-- MB/s"),
+                            write_x,
+                            value_y,
+                            Center,
+                            Middle,
+                        );
+                        text(
+                            fb,
+                            &medium,
+                            format_args!("-- MB/s"),
+                            read_x,
+                            value_y,
+                            Center,
+                            Middle,
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// No clock on the board, so test files get a fixed date.
+struct FixedTime;
+
+impl TimeSource for FixedTime {
+    fn get_timestamp(&self) -> Timestamp {
+        Timestamp {
+            year_since_1970: 56,
+            zero_indexed_month: 9,
+            zero_indexed_day: 28,
+            hours: 12,
+            minutes: 0,
+            seconds: 0,
+        }
+    }
+}
+
+impl<S: SpiDevice<u8>, C: OutputPin, D: DelayNs> ui::Card for SdCard<S, C, D> {
+    fn kind(&self) -> Option<&'static str> {
+        self.get_card_type().map(|kind| match kind {
+            CardType::SD1 | CardType::SD2 => "SDSC",
+            CardType::SDHC => "SDHC/SDXC",
+        })
+    }
+
+    fn forget(&self) {
+        self.mark_card_uninit();
+    }
 }
 
 /// Battery voltage in mV from the M5PM1 (registers 0x22 and 0x23, little endian).
@@ -314,6 +954,32 @@ fn now_ms() -> u64 {
     Instant::now().duration_since_epoch().as_millis()
 }
 
+fn now_us() -> u64 {
+    Instant::now().duration_since_epoch().as_micros()
+}
+
+/// Refreshes what changed with `mode` and returns how long it took in milliseconds. Every 40th
+/// one is a full `M5Quality` refresh instead, to clear ghosting, like the sketch.
+fn show_region<B: EpdParallelBus>(
+    display: &mut EpdDisplay<'_, B, Ed047tc1>,
+    fb: &mut ui::Fb<'_>,
+    mode: RefreshMode,
+    partials: &mut ui::Partials,
+) -> u64 {
+    let start = now_ms();
+    let result = if partials.bump() {
+        info!("full refresh to clear ghosting");
+        fb.clear_dirty();
+        display.refresh(fb, RefreshMode::M5Quality)
+    } else {
+        display.refresh_dirty(fb, mode)
+    };
+    if result.is_err() {
+        error!("refresh failed");
+    }
+    now_ms() - start
+}
+
 #[esp_hal::main]
 fn main() -> ! {
     let p = rust_m5paperdiy_examples::init!();
@@ -324,6 +990,29 @@ fn main() -> ! {
     let config = InputConfig::default().with_pull(Pull::Up);
     let btn_a = Input::new(p.GPIO4, config);
     let btn_b = Input::new(p.GPIO3, config);
+
+    // microSD on SPI2: CLK 39, MOSI 38, MISO 40, CS 47, 20 MHz. Card detect is GPIO48, low when
+    // a card is in.
+    let spi = Spi::new(
+        p.SPI2,
+        SpiConfig::default()
+            .with_frequency(Rate::from_mhz(20))
+            .with_mode(SpiMode::_0),
+    )
+    .map(|spi| {
+        spi.with_sck(p.GPIO39)
+            .with_miso(p.GPIO40)
+            .with_mosi(p.GPIO38)
+    });
+    let Ok(spi) = spi else {
+        error!("spi config failed");
+        rust_m5paperdiy_examples::halt();
+    };
+    let cs = Output::new(p.GPIO47, Level::High, OutputConfig::default());
+    // Infallible for an `Output` chip select.
+    let sd_device = ExclusiveDevice::new_no_delay(spi, cs).unwrap_or_else(|e| match e {});
+    let mut card = ui::CardApp::new(SdCard::new(sd_device, DummyCsPin, Delay::new()), FixedTime);
+    let card_detect = Input::new(p.GPIO48, config);
 
     let bus = rust_m5paperdiy_examples::lcd_bus!(p, 16);
     let mut prev = vec![0xFFu8; Ed047tc1::FB_BYTES];
@@ -373,6 +1062,10 @@ fn main() -> ! {
         delay.delay_ms(5);
     }
 
+    // The card box, like the sketch's `AppTfCard::begin`.
+    let first = card.begin(now_ms(), card_detect.is_low());
+    ui::draw_card(&mut fb, card.info(), card.result(), first);
+
     if display.refresh(&fb, RefreshMode::M5Quality).is_err() {
         error!("background refresh failed");
     }
@@ -380,38 +1073,48 @@ fn main() -> ! {
     fb.clear_dirty();
     info!("ready");
 
+    let mut clicks = ui::Clicks::default();
+    let mut partials = ui::Partials::default();
     let (mut a_down, mut b_down) = (false, false);
     loop {
         let (a, b) = (btn_a.is_low(), btn_b.is_low());
+        let (_, b_clicked) = clicks.update(a, b);
         if a != a_down || b != b_down {
-            let start = now_ms();
             if a != a_down {
                 ui::draw_border(&mut fb, ui::BORDER_A_Y, a);
             }
             if b != b_down {
                 ui::draw_border(&mut fb, ui::BORDER_B_Y, b);
             }
-            if display
-                .refresh_dirty(&mut fb, RefreshMode::M5Fastest)
-                .is_err()
-            {
-                error!("border refresh failed");
-            }
+            let took = show_region(&mut display, &mut fb, RefreshMode::M5Fastest, &mut partials);
             info!(
                 "A {}, B {}: border refresh {} ms",
                 if a { "down" } else { "up" },
                 if b { "down" } else { "up" },
-                now_ms() - start
+                took
             );
             (a_down, b_down) = (a, b);
+        }
+        if let Some(draw) = card.update(now_ms(), card_detect.is_low(), b_clicked, now_us) {
+            // The card box: info is a quality refresh, `TESTING...` a text one.
+            ui::draw_card(&mut fb, card.info(), card.result(), draw);
+            let mode = match draw {
+                ui::CardDraw::Info => RefreshMode::M5Quality,
+                ui::CardDraw::Testing => RefreshMode::M5Text,
+            };
+            let took = show_region(&mut display, &mut fb, mode, &mut partials);
+            let result = card.result();
+            info!(
+                "card box: refresh {} ms, write {} KiB/s, read {} KiB/s",
+                took,
+                (result.write_mibs * 1024.0) as u32,
+                (result.read_mibs * 1024.0) as u32
+            );
         } else if let Some(text) = battery.poll(now_ms(), a || b, || battery_mv(&mut i2c)) {
             // A new reading, shown in its box only.
-            let start = now_ms();
             ui::draw_battery(&mut fb, text.as_str());
-            if display.refresh_dirty(&mut fb, RefreshMode::M5Text).is_err() {
-                error!("battery refresh failed");
-            }
-            info!("battery {}: refresh {} ms", text.as_str(), now_ms() - start);
+            let took = show_region(&mut display, &mut fb, RefreshMode::M5Text, &mut partials);
+            info!("battery {}: refresh {} ms", text.as_str(), took);
         }
         delay.delay_ms(5);
     }
