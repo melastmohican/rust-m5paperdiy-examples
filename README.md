@@ -2,7 +2,9 @@
 
 Rust examples for the **M5Stack PaperDIY** (ESP32-S3, 4.7" ED047TC1 960 x 540 e-paper,
 16 grays, two buttons, microSD, M5PM1 power chip), built on the
-[`epdpi`](../epdpi) driver. Each file in `examples/` is a complete `no_std` image.
+[`epdpi`](../epdpi) driver. Each file in `examples/` is a complete `no_std` image. Every port
+of an Arduino sketch also exists as an async (Embassy) twin of the same name in the sibling
+project `rust-m5paperdiy-embassy-examples`.
 
 ## Hello M5PaperDIY!
 
@@ -16,19 +18,22 @@ cargo run --release
 It is the quickest check that a board, cable and toolchain work. If nothing appears, run the
 `epdpi_*` diagnostics below in order.
 
-## Two kinds of example
+## Kinds of example
 
-| Prefix | Purpose | Status |
+| Name | Purpose | Status |
 | :--- | :--- | :--- |
-| `epdpi_*` | Basic diagnostics for the `epdpi` library. They prove each layer of the driver on real hardware. | 14 examples, all working |
-| no prefix | Real board examples, ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | planned, see [Porting plan](#porting-plan) |
+| `epdpi_*` | Diagnostics for the `epdpi` library. They prove each layer of the driver on real hardware. | 16 examples, all working |
+| no prefix | Ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | `display_demo`, `buttons`, `text_log_scroll`, `factory_test`, `user_demo`, all working, see [Ports](#ports-of-the-arduino-sketches) |
+| `poc_*`, `wifi_scan` | Proofs that a part works from Rust, with a log and no display | `poc_battery`, `poc_sd`, `wifi_scan`, all working |
 
 ## Run
 
 ```bash
 cargo run --release --example epdpi_pmic_probe      # flash and monitor via espflash
+cargo run --release --example user_demo             # the PaperDIY demo
 cargo build --release --bins --examples             # build everything
 cargo clippy --bins --examples --workspace -- -D warnings  # CI lint
+host-tests/run.sh                                   # the host tests, see below
 ```
 
 Dependencies: `[dependencies]` holds only what the library and `src/main.rs` need. Anything
@@ -65,6 +70,8 @@ Written to find the bus sequence that works. Keep them for the next board or pan
 | `epdpi_gray_ramp_m5` | The ramp with `RefreshMode::M5Quality` (M5GFX's waveform) over `FastBus` |
 | `epdpi_lcd_row_time` | Microseconds per row on `LcdBus` (22 us, M5GFX 15.5 us) |
 | `epdpi_lcd_ramp` | The `M5Quality` ramp over `LcdBus`, the LCD_CAM DMA bus. Even gray steps, like M5GFX |
+| `epdpi_m5_modes` | A counter with `M5Fast`, `M5Fastest` and `M5Text` in turn, five updates each, a clear between modes. Reference sketch: `EpdModesCounter` |
+| `epdpi_window` | Partial-window updates: a counter in a box over a gray ramp, refreshed with `refresh_dirty`. The ramp around the box must not change |
 
 Every example's header comment says what it tests, how to run it, what to expect, and what a
 failure means.
@@ -79,11 +86,12 @@ failure means.
 | OE | 45 | PWR | 46 |
 | I2C SDA / SCL | 41 / 42 | M5PM1 address | 0x6E |
 | BtnA / BtnB | 4 / 3 (active low) | microSD CLK / MOSI / MISO / CS | 39 / 38 / 40 / 47 |
+| microSD detect | 48 (low when a card is in) | | |
 
 The panel rail is gated twice: PMIC GPIO2 (EPD_PWR) over I2C and ESP32 GPIO46. Every display
 example switches the PMIC on first through `pmic::epd_power_on`. Pin map and PMIC sequence
 come from M5GFX (`board_M5PaperDIY`). The button and microSD pins come from M5Unified and
-the Arduino sketches, and no Rust example has used them yet.
+the Arduino sketches, and `buttons`, `factory_test` and `user_demo` use them.
 
 ## What was learned on the hardware
 
@@ -102,8 +110,18 @@ These cost time to find. They are recorded here so the next person does not repe
   gives a smooth ramp. It is used by `epdpi_clear`, `epdpi_gray_ramp`, `epdpi_text` and
   `epdpi_fast_mono`.
 - **PSRAM is required.** The two 4 bits per pixel buffers are 259,200 bytes each. The chip
-  has 8 MB of octal PSRAM. `esp-alloc` 0.9's `psram_allocator!` does not match the esp-hal
-  1.1 PSRAM API, so the `init!` macro registers the region by hand.
+  has 8 MB of octal PSRAM. The `init!` macro registers the region with `esp-alloc` by hand.
+- **Keep one `esp-alloc`.** `esp-radio` and `esp-rtos` use `esp-alloc` 0.10, so this crate does
+  too. With two versions in the tree there are two heaps: `heap_allocator!` fills one, the global
+  allocator is the other and is empty, and the first Wi-Fi start panics with `memory allocation
+  of 4 bytes failed`. Check with `cargo tree -d | grep esp-alloc`.
+- **Wi-Fi needs a scheduler.** `esp-radio` needs the `esp-rtos` scheduler, and 0.18 has only an
+  async scan. The blocking examples start `esp-rtos` without its executor and poll the scan
+  future from their main loop. Running the radio does not change refresh times.
+- **microSD through `embedded-sdmmc` 0.7.** It has no long file names (`PaperDIY_01.png` shows
+  as `PAPER~26.PNG`). It writes one 512 byte block per command, so a write runs at about
+  0.17 MB/s on the test card where the Arduino sketch's FatFS path gets 0.42. Reads are faster
+  than Arduino's: 0.52 against 0.40 MB/s.
 - **Your Arduino sketches prove the hardware.** Because M5GFX drives this panel on the same
   board, a failure with `epdpi` that M5GFX does not show is a driver bug.
 
@@ -117,39 +135,63 @@ These cost time to find. They are recorded here so the next person does not repe
 | Gray ramp has only two tones | row time too long (portable bus) | use `into_fast_bus()`, or `lcd_bus!` for the closest match to M5GFX |
 | Mirrored or rotated text | framebuffer mapping | see `epdpi_text` |
 | Old content after an interrupted run | gate drivers left in an odd state | unplug USB, rerun |
+| Panic `memory allocation of 4 bytes failed` when the radio starts | two `esp-alloc` versions in the build | `cargo tree -d \| grep esp-alloc`, make them one |
+| `user_demo` shows the logo and the board goes dark | you held A and B for 7 seconds, which is the power-off | press PWR to start it again |
 
-## Porting plan
+## Ports of the Arduino sketches
 
-Which Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) can become real board examples. Effort
-is a rough size for one example, assuming the driver as it is today.
+Each port draws portrait (540 x 960, `Rotation::Deg270`, connector at the bottom) except
+`text_log_scroll`, which is landscape like its sketch. Fonts are `u8g2-fonts` stand-ins for
+M5GFX's FreeSans, so letter shapes differ a little.
 
-| Sketch | Port as | Needs | Effort | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| Button | `buttons` | GPIO4 / GPIO3 inputs, `FastMono` | small | Shows the last press on screen. Good first real example. |
-| Display | `display_demo` | embedded-graphics, a larger font crate | small | M5GFX's FreeSans fonts have no direct match. `profont` or `u8g2-fonts` would do. |
-| TextLogScroll | `text_log_scroll` | `FastMono`, a 1-bit text buffer | small | A fast-update stress test. |
-| FactoryTest: gray ramp | already done | none | none | Same as `epdpi_gray_ramp`. |
-| FactoryTest: refresh compare | `refresh_compare` | the three `RefreshMode`s | small | M5GFX has four modes, `epdpi` has three. |
-| FactoryTest: Life game | `life` | `FastMono` | small | Pure compute plus updates. |
-| M5PM1 | `pm1_timer` | PMIC timer registers over I2C | medium | `shutdown` powers the board off. Test with care. |
-| Battery readout (from UserDemo and FactoryTest) | `battery` | PMIC VBAT registers 0x22 and 0x23 | small | Already readable, see `epdpi_pmic_dump`. |
-| microSD | `sd_images` | `embedded-sdmmc`, a PNG or BMP decoder | medium | Convert the PNGs to BMP to skip a decoder. |
-| PaperDIYUserDemo: TF card speed test | `sd_speed` | `embedded-sdmmc` | medium | |
-| PaperDIYUserDemo: Wi-Fi scan | `wifi_scan` | `esp-radio` and an executor | large | New toolchain surface. Do last. |
-| PaperDIYUserDemo: region refresh | n/a | partial-window refresh in `epdpi` | large | The driver refreshes whole frames only. |
-| EpubReader | n/a | zip, XML, fonts, SD | very large | Not a port, a new project. |
-| FastEPD/animated_smiles | n/a | | | Does not work in Arduino either. |
+| Arduino sketch | Rust example | What it does |
+| :--- | :--- | :--- |
+| `Display` | `display_demo` | A page with a triple border, centered text and a bar of four gray cells, `M5Quality`. Prints `ED047TC1` where the sketch prints the board's connector name |
+| `Button` | `buttons` | Shows the last button pressed, `M5Text`. Pins GPIO4 and GPIO3 |
+| `TextLogScroll` | `text_log_scroll` | A scrolling log, one full-screen `M5Fastest` update per line |
+| `FactoryTest` | `factory_test` | A two button menu: the checklist (battery, Wi-Fi, PSRAM, microSD, both buttons), Compare (times each refresh mode), Gray Ramp and the Game of Life |
+| `PaperDIYUserDemo` | `user_demo` | The PAPER DIY poster with live widgets, all refreshed in small windows: battery voltage, a Wi-Fi list (A rescans), the microSD card with a 1 MiB write and read speed test (B runs it), A and B border feedback, and hold A and B for 2 s then 5 s to power off |
 
-Driver gaps that limit these ports: no partial-window refresh, no rotation, only the
-`embedded-graphics` mono fonts, and no `LCD_CAM` DMA bus (so the CPU is busy during every
-refresh).
+`user_demo` follows the sketch's rule that every 40th partial refresh is a full `M5Quality` one,
+to clear ghosting. It does not port the sketch's factory first-boot shutdown, which needs NVS.
+The sketches `EpdFastCounter`, `EpdModesCounter` and `EpdQualityRamp` are the references for
+`epdpi_fast_mono`, `epdpi_m5_modes` and `epdpi_gray_ramp_m5` / `epdpi_lcd_ramp`.
+
+Sketches without a Rust example: `M5PM1` (PMIC timer and shutdown), `microSD` (PNG viewer),
+`EpubReader` and `FastEPD/animated_smiles` (which does not work in Arduino either).
+
+`poc_battery` reads the M5PM1 voltage registers (VBAT, VIN, 5VINOUT, VREF) once a second and
+matches M5Unified's `getBatteryVoltage()`. `poc_sd` opens the card over SPI at 20 MHz, lists the
+root directory and times a read. `wifi_scan` scans every 5 s and logs the access points.
+
+## Host tests
+
+`host-tests/` is a separate crate with 33 tests for the hardware-free code of `factory_test` and
+`user_demo`: the Game of Life, button handling, the dither, the widgets' state machines, the card
+speed test against a RAM disk holding a FAT32 volume, and the power-off timing. A build script
+copies the `mod ui` block out of each example, so the tests run the code the board runs.
+
+```bash
+host-tests/run.sh                    # all tests
+UI_DUMP=/some/dir host-tests/run.sh  # also writes the rendered pages as .pgm and .raw files
+```
+
+Use `run.sh` and not `cargo test` inside the folder: `.cargo/config.toml` here forces the ESP
+target, and cargo reads it from the directory it starts in.
 
 ## Layout
 
 - `src/main.rs`: the `Hello M5PaperDIY!` program.
 - `examples/epdpi_*.rs`: library diagnostics.
-- `src/lib.rs`: pin map, `init!` (PSRAM heap), `display_pins!`, `pmic_i2c!`, the `pmic`
-  module, the `FastBus` type alias, and a panic handler.
+- `examples/display_demo.rs`, `buttons.rs`, `text_log_scroll.rs`, `factory_test.rs`,
+  `user_demo.rs`: the ports. `factory_test` and `user_demo` keep their drawing and state
+  machines in an inline `mod ui` block, which is the same text in the async twin.
+- `examples/poc_*.rs`, `examples/wifi_scan.rs`: parts proven from Rust.
+- `assets/`: `img_bg.png` and `img_logo.png`, M5Stack artwork copied from the Arduino sketch,
+  used by `user_demo`.
+- `host-tests/`: the host tests.
+- `src/lib.rs`: pin map, `init!` (PSRAM heap), `display_pins!`, `pmic_i2c!`, `lcd_bus!`, the
+  `pmic` module, the `FastBus` type alias, and a panic handler.
 - `build.rs`, `.cargo/config.toml`, `rust-toolchain.toml`: Xtensa build setup copied from
   `rust-reterminal-e1002-examples`.
 
