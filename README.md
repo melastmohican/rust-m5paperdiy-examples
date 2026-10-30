@@ -4,7 +4,7 @@ Rust examples for the **M5Stack PaperDIY** (ESP32-S3, 4.7" ED047TC1 960 x 540 e-
 16 grays, two buttons, microSD, M5PM1 power chip), built on the
 [`epdpi`](../epdpi) driver. Each file in `examples/` is a complete `no_std` image. Every port
 of an Arduino sketch also exists as an async (Embassy) twin of the same name in the sibling
-project `rust-m5paperdiy-embassy-examples`.
+project [`rust-m5paperdiy-embassy-examples`](https://github.com/melastmohican/rust-m5paperdiy-embassy-examples).
 
 ## Hello M5PaperDIY!
 
