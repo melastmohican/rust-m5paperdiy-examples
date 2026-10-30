@@ -4,7 +4,7 @@
 //! Wi-Fi check. Stage 1: log only, no display. Starts the radio in station mode and scans
 //! every 5 s, printing the SSID, signal strength and channel of up to 20 access points.
 //!
-//! The blocking twin of `wifi_scan` in `rust-m5paperdiy-embassy-examples`. `esp-radio` has no
+//! The blocking twin of `wifi_scan` in `async/`. `esp-radio` has no
 //! blocking scan in 0.18 and needs the `esp-rtos` scheduler, so this starts `esp-rtos` without
 //! its Embassy executor and runs the async scan to completion with `embassy_futures::block_on`.
 //!

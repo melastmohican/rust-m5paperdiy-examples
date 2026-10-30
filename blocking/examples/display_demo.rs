@@ -2,7 +2,7 @@
 //!
 //! Draws the same screen as `~/Src/Arduino/M5PaperDIY/Display`: a triple black border, four
 //! centered lines of text and a bar of four cells (black, dark gray, light gray, black), with
-//! `RefreshMode::M5Quality`. The async twin is `display_demo` in `rust-m5paperdiy-embassy-examples`.
+//! `RefreshMode::M5Quality`. The async twin is `display_demo` in `async/`.
 //!
 //! ## Run
 //!

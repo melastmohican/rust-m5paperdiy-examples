@@ -5,12 +5,19 @@ edition = "2024"
 publish = false
 description = "Host tests for the hardware-free `mod ui` blocks of the factory_test, user_demo, sd_images and animated_smiles examples"
 
-# Its own root, so the examples crate above it never sees this package. Run it with `./run.sh`.
+# Its own root, so the crates in `../blocking` and `../async` never see this package. Run it with `./run.sh`.
 [workspace]
 
+[features]
+# Run the tests in both modes: `./run.sh` is blocking, `./run.sh --no-default-features` is async.
+default = ["blocking"]
+blocking = ["epdpi/blocking", "m5paperdiy-common/blocking"]
+
 [dependencies]
-# Sibling checkout, like the examples crate. Blocking API, with the graphics feature.
-epdpi = { path = "../../epdpi/epdpi" }
+# Checkout next to this repository, like the example crates. `default-features = false` so the `blocking`
+# feature above decides the mode, with the graphics feature on either way.
+epdpi = { path = "../../epdpi/epdpi", default-features = false, features = ["graphics"] }
+m5paperdiy-common = { path = "../common", default-features = false }
 embedded-graphics = "0.8.1"
 embedded-sdmmc = "0.10.0"
 minipng = "1.0"

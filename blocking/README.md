@@ -1,10 +1,10 @@
-# rust-m5paperdiy-examples
+# Blocking examples (`blocking/`)
 
 Rust examples for the **M5Stack PaperDIY** (ESP32-S3, 4.7" ED047TC1 960 x 540 e-paper,
 16 grays, two buttons, microSD, M5PM1 power chip), built on the
-[`epdpi`](../epdpi) driver. Each file in `examples/` is a complete `no_std` image. Every port
-of an Arduino sketch also exists as an async (Embassy) twin of the same name in the sibling
-project [`rust-m5paperdiy-embassy-examples`](https://github.com/melastmohican/rust-m5paperdiy-embassy-examples).
+[`epdpi`](https://github.com/melastmohican/epdpi) driver. Each file in `examples/` is a complete `no_std` image. Every port
+of an Arduino sketch also exists as an async (Embassy) twin of the same name in [`../async`](../async).
+Build and run from this folder (`cd blocking`).
 
 ## Hello M5PaperDIY!
 
@@ -16,7 +16,7 @@ cargo run --release
 ```
 
 It is the quickest check that a board, cable and toolchain work. If nothing appears, work through the
-bring-up diagnostics in [bringup.md](bringup.md).
+bring-up diagnostics in [bringup.md](../bringup.md).
 
 ## Kinds of example
 
@@ -30,7 +30,7 @@ async twin), or `<name>: Rust, blocking` as the first log line for the ones with
 log then tells a Rust build from the Arduino sketch, and a blocking one from an async one.
 
 The diagnostics that proved the `epdpi` driver layer by layer, and the host tests, are described in
-[bringup.md](bringup.md). Their code is on the `bringup` branch.
+[bringup.md](../bringup.md). Their code is on the `bringup` branch.
 
 ## Run
 
@@ -45,7 +45,7 @@ an example alone needs (SD card, font crates, image decoders) goes in `[dev-depe
 
 Requirements: the `esp` toolchain from `espup` (`rustup toolchain list` should show `esp`)
 and `espflash`. Always build with `--release`: the PSRAM heap and the bus are far too slow in
-a dev build. `epdpi` and `epdpi-esp` are path dependencies on the sibling checkout `../epdpi`, a workspace with both crates.
+a dev build. `epdpi` and `epdpi-esp` are path dependencies on the checkout next to this repository, `../../epdpi`, a workspace with both crates.
 
 ## Board reference
 
@@ -89,7 +89,7 @@ These cost time to find. They are recorded here so the next person does not repe
 | Panic `memory allocation of 4 bytes failed` when the radio starts | two `esp-alloc` versions in the build | `cargo tree -d \| grep esp-alloc`, make them one |
 | `user_demo` shows the logo and the board goes dark | you held A and B for 7 seconds, which is the power-off | press PWR to start it again |
 
-More symptoms, from bringing up a board, are in [bringup.md](bringup.md).
+More symptoms, from bringing up a board, are in [bringup.md](../bringup.md).
 
 ## Ports of the Arduino sketches
 
@@ -111,7 +111,7 @@ M5GFX's FreeSans, so letter shapes differ a little.
 `user_demo` follows the sketch's rule that every 40th partial refresh is a full `M5Quality` one,
 to clear ghosting. It does not port the sketch's factory first-boot shutdown, which needs NVS.
 The sketches `EpdFastCounter`, `EpdModesCounter` and `EpdQualityRamp` are the references for the
-diagnostics on the `bringup` branch (see [bringup.md](bringup.md)).
+diagnostics on the `bringup` branch (see [bringup.md](../bringup.md)).
 
 The sketch without a Rust example is `EpubReader`.
 
@@ -128,8 +128,8 @@ root directory and times a read. `wifi_scan` scans every 5 s and logs the access
 - `examples/poc_*.rs`, `examples/sdmc_spi.rs`, `examples/wifi_scan.rs`: parts proven from Rust.
 - `assets/`: `img_bg.png` and `img_logo.png`, M5Stack artwork copied from the Arduino sketch,
   used by `user_demo`.
-- `host-tests/`: the host tests, see [bringup.md](bringup.md).
-- `bringup.md`: the bring-up diagnostics and the host tests, described.
+- `../host-tests/`: the host tests, run in blocking and in async mode, see [bringup.md](../bringup.md).
+- `../bringup.md`: the bring-up diagnostics and the host tests, described.
 - `src/lib.rs`: pin map, `init!` (PSRAM heap), `pmic_i2c!`, `lcd_bus!`, the `pmic` module, and a
   panic handler.
 - `build.rs`, `.cargo/config.toml`, `rust-toolchain.toml`: Xtensa build setup copied from

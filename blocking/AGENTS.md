@@ -1,7 +1,7 @@
-# rust-m5paperdiy-examples
+# blocking/
 
-Board examples for `../epdpi` (crates `epdpi` and `epdpi-esp`) on the M5Stack PaperDIY (ESP32-S3, ED047TC1).
-Layout mirrors `../rust-reterminal-e1002-examples`.
+Board examples for `../../epdpi` (crates `epdpi` and `epdpi-esp`) on the M5Stack PaperDIY (ESP32-S3, ED047TC1).
+Layout mirrors `../../rust-reterminal-e1002-examples`.
 
 ## Commands
 
@@ -25,9 +25,9 @@ dependency set for an example's sake.
 
 - Examples ported from [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) take no prefix
   and live in `examples/` on `main`. Every port also gets an async twin of the same name in
-  `../rust-m5paperdiy-embassy-examples`. Proofs that a part works take `poc_` (or a plain name like `wifi_scan`).
+  `../async`. Proofs that a part works take `poc_` (or a plain name like `wifi_scan`).
 - `epdpi_*` diagnostics (the bring-up programs for the `epdpi` library) are **not on `main`**. They live on the `bringup` branch,
-  described in `bringup.md`. Add new diagnostics there, keep them small, and keep each one's header comment current (what it
+  described in `../bringup.md`. Add new diagnostics there, keep them small, and keep each one's header comment current (what it
   tests, how to run, expected result, failure meaning).
 
 ## Rules
@@ -42,7 +42,7 @@ dependency set for an example's sake.
 - Examples use the blocking `epdpi` API with `esp_hal::delay::Delay`; the bus needs
   microsecond delays.
 - Use `lcd_bus!(p, 16)` (the `LCD_CAM` DMA bus) for anything that must match M5GFX's grays, `into_fast_bus()` otherwise. The portable bus (`into_bus()`) has a row
-  time about 15x too long for the 16-gray waveform. See `bringup.md`.
+  time about 15x too long for the 16-gray waveform. See `../bringup.md`.
 - Power-cycle after an interrupted refresh before judging the next run.
 - Never `git add .` in the parent `~/Src` repo. This directory is its own repo.
 - Keep `esp-alloc` on the version `esp-radio` and `esp-rtos` use (0.10; check
@@ -52,20 +52,20 @@ dependency set for an example's sake.
 
 ## Host tests
 
-`host-tests/` is a separate crate (its own `[workspace]`, not built by the commands above) that
+`../host-tests/` is a separate crate (its own `[workspace]`, not built by the commands above) that
 tests the hardware-free `mod ui` blocks of `examples/factory_test.rs`, `examples/user_demo.rs`,
 `examples/sd_images.rs` and `examples/animated_smiles.rs` on the host. `build.rs` copies each block out of its example, so the tests cover the code the
 board runs. They draw into a real `EpdFrameBuffer`, decode the real poster, and run the card
 speed test against a RAM disk holding a FAT32 volume built in code.
 
 ```bash
-host-tests/run.sh                    # all tests, from any directory
-host-tests/run.sh --no-fail-fast     # see every failing file, not just the first
-UI_DUMP=/some/dir host-tests/run.sh  # also writes the rendered pages as .pgm and .raw files
+../host-tests/run.sh                         # all tests in blocking mode, from any directory
+../host-tests/run.sh --no-default-features   # the same tests with epdpi in async mode
+../host-tests/run.sh --no-fail-fast          # see every failing file, not just the first
+UI_DUMP=/some/dir ../host-tests/run.sh       # also writes the rendered pages as .pgm and .raw files
 ```
 
 Use `run.sh`, not plain `cargo test` inside the folder: `.cargo/config.toml` here forces the ESP
 target and `build-std`, and cargo reads it from the directory it starts in. `async_copy` checks
-that the async crate's `mod ui` blocks are the same text, and is skipped when that crate is not
-checked out next to this one. Change a `mod ui` block in one crate and you must copy it to the
+that the `mod ui` blocks in `../async` are the same text. Change a `mod ui` block in one crate and you must copy it to the
 other.

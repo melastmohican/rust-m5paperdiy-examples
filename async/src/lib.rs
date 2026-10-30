@@ -1,4 +1,4 @@
-//! Board support for the M5Stack PaperDIY, async flavour of `rust-m5paperdiy-examples`.
+//! Board support for the M5Stack PaperDIY, async flavour of `blocking/`.
 //!
 //! Same pin map (M5GFX `board_M5PaperDIY`): D0..D7 on GPIO 6, 14, 7, 12, 9, 11, 8, 10, CL 16,
 //! SPH 13, CKV 18, SPV 17, LE 15, OE 45, PWR 46, I2C SDA / SCL 41 / 42. Copied, not shared,

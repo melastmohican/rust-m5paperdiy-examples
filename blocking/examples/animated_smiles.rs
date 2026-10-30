@@ -4,7 +4,7 @@
 //! (upstream `bitbank2/FastEPD`, `examples/Arduino/animated_smiles`). Each frame draws every smiley
 //! at its position, moves it 4 px and bounces it off the edges, then refreshes what changed. After
 //! 250 frames the panel is cleared to white and the board powers the panel down. The async twin is
-//! `animated_smiles` in `rust-m5paperdiy-embassy-examples`.
+//! `animated_smiles` in `async/`.
 //!
 //! The smiley is the sketch's own `smiley.h`: 240 bytes of G5 (CCITT group 4) data. `mod ui` has a
 //! small G5 decoder, a port of FastEPD's `g5dec.inl`, checked on the host against the output of the

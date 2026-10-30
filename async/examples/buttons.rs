@@ -3,7 +3,7 @@
 //! Shows `PaperDIY Button Test`, the last action and the pin numbers. Pressing BtnA (GPIO4) or
 //! BtnB (GPIO3, both active low) redraws the screen with `BtnA pressed` or `BtnB pressed`,
 //! through `RefreshMode::M5Text` like the sketch's `epd_text`. The blocking twin is `buttons` in
-//! `rust-m5paperdiy-examples`. Here `epdpi` runs in async mode on the `esp-rtos` Embassy
+//! `blocking/`. Here `epdpi` runs in async mode on the `esp-rtos` Embassy
 //! executor.
 //!
 //! ## Run

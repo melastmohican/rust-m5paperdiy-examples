@@ -46,8 +46,11 @@ fn quantize_keeps_the_ends_and_stays_in_range() {
 
 #[test]
 fn the_real_poster_decodes_and_draws() {
-    let bytes =
-        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/img_bg.png")).unwrap();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../blocking/assets/img_bg.png"
+    ))
+    .unwrap();
     let header = minipng::decode_png_header(&bytes).unwrap();
     let mut scratch = vec![0u8; header.required_bytes()];
     let image = minipng::decode_png(&bytes, &mut scratch).unwrap();
@@ -187,8 +190,11 @@ fn battery_holds_a_finished_reading_while_a_button_is_down() {
 
 #[test]
 fn battery_text_lands_inside_its_box_on_the_poster() {
-    let bytes =
-        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/img_bg.png")).unwrap();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../blocking/assets/img_bg.png"
+    ))
+    .unwrap();
     let header = minipng::decode_png_header(&bytes).unwrap();
     let mut scratch = vec![0u8; header.required_bytes()];
     let image = minipng::decode_png(&bytes, &mut scratch).unwrap();
@@ -240,8 +246,11 @@ fn battery_text_lands_inside_its_box_on_the_poster() {
 
 #[test]
 fn the_build_label_stays_in_the_top_right_corner_above_the_title() {
-    let bytes =
-        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/img_bg.png")).unwrap();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../blocking/assets/img_bg.png"
+    ))
+    .unwrap();
     let header = minipng::decode_png_header(&bytes).unwrap();
     let mut scratch = vec![0u8; header.required_bytes()];
     let image = minipng::decode_png(&bytes, &mut scratch).unwrap();

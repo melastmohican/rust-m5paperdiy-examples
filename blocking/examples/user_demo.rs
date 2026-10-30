@@ -5,7 +5,7 @@
 //!
 //! **Stages 1 to 3 (this file):** the background image, the BtnA and BtnB border feedback, the
 //! battery voltage and the card box. The
-//! async twin is `user_demo` in `rust-m5paperdiy-embassy-examples`.
+//! async twin is `user_demo` in `async/`.
 //!
 //! ## Run
 //!

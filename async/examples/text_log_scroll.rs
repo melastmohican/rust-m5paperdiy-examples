@@ -3,7 +3,7 @@
 //! Prints `0000:hello world`, `0001:this`, `0002:is`, ... one line per update in big black
 //! letters on white, scrolling up when the screen is full, as fast as the panel allows, with
 //! `RefreshMode::M5Fastest` like the sketch's `epd_fastest`. The blocking twin is
-//! `text_log_scroll` in `rust-m5paperdiy-examples`. Here `epdpi` runs in async mode on the
+//! `text_log_scroll` in `blocking/`. Here `epdpi` runs in async mode on the
 //! `esp-rtos` Embassy executor.
 //!
 //! ## Run

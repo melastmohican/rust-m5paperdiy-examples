@@ -24,9 +24,9 @@ embedded-hal       = "1.0.0"
 
 # Sibling checkout, a workspace. Async API on purpose: `default-features = false` leaves out the
 # `blocking` feature, which is why this is its own project and not a member of
-# `rust-m5paperdiy-examples`. Cargo would unify the two modes inside one workspace.
-epdpi     = { path = "../epdpi/epdpi", default-features = false, features = ["defmt", "graphics"] }
-epdpi-esp = { path = "../epdpi/epdpi-esp", default-features = false, features = ["esp32s3", "defmt"] }
+# the blocking crate. Cargo would unify the two modes inside one workspace.
+epdpi     = { path = "../../epdpi/epdpi", default-features = false, features = ["defmt", "graphics"] }
+epdpi-esp = { path = "../../epdpi/epdpi-esp", default-features = false, features = ["esp32s3", "defmt"] }
 esp-radio = { version = "0.18.0", features = ["wifi", "esp32s3", "unstable", "defmt"] }
 
 [dev-dependencies]

@@ -1,16 +1,17 @@
-# rust-m5paperdiy-embassy-examples
+# Async examples (`async/`)
 
 Async (Embassy) examples for the [`epdpi`](https://github.com/melastmohican/epdpi) e-paper
 driver on the M5Stack PaperDIY (ESP32-S3, ED047TC1 panel). Structure and dependency versions follow
 `rust-reterminal-e1002-examples`.
 
-This is the async twin of `rust-m5paperdiy-examples`: every port of an Arduino sketch there has
-an example of the same name here. It is a separate project on purpose: `epdpi` has mutually
-exclusive blocking and async modes, and Cargo would unify them inside one workspace.
+This is the async twin of [`../blocking`](../blocking): every port of an Arduino sketch there has
+an example of the same name here. It is a separate Cargo project on purpose, in its own folder:
+`epdpi` has mutually exclusive blocking and async modes, and Cargo would unify them inside one workspace.
+Build and run from this folder (`cd async`).
 
 ## Run
 
-Needs the `esp` Rust toolchain and `espflash`. `epdpi` is a sibling checkout (`../epdpi`). Always
+Needs the `esp` Rust toolchain and `espflash`. `epdpi` is a checkout next to this repository (`../../epdpi`). Always
 build with `--release`.
 
 ```text
@@ -53,8 +54,8 @@ board:
 - The microSD card is read through `embedded-sdmmc` over a blocking SPI device in both projects,
   because the card work is short and the crate has no async API.
 - `factory_test`, `user_demo`, `sd_images` and `animated_smiles` keep their drawing and state machines in an inline `mod ui`
-  block. It is the same text as in `rust-m5paperdiy-examples`, where `host-tests/` tests it. Change
-  one and copy the change to the other.
+  block. It is the same text as in `../blocking`, which `../host-tests` tests, and the `async_copy`
+  test fails when the two differ. Change one and copy the change to the other.
 - Keep `esp-alloc` on the version `esp-radio` and `esp-rtos` use (0.10, check with
   `cargo tree -d | grep esp-alloc`). Two versions are two heaps, and the first Wi-Fi start then
   panics with `memory allocation of 4 bytes failed`.

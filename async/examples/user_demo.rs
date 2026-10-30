@@ -5,7 +5,7 @@
 //!
 //! **Stages 1 to 3 (this file):** the background image, the BtnA and BtnB border feedback, the
 //! battery voltage and the card box. The
-//! blocking twin is `user_demo` in `rust-m5paperdiy-examples`. Here `epdpi` runs in async mode on
+//! blocking twin is `user_demo` in `blocking/`. Here `epdpi` runs in async mode on
 //! the `esp-rtos` Embassy executor.
 //!
 //! ## Run

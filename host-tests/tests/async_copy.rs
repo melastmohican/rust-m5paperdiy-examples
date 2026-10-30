@@ -1,5 +1,5 @@
 //! The async crate keeps its own copy of each `mod ui` block. They must be the same text as the
-//! ones tested here. Skipped when the async crate is not checked out next to this one.
+//! ones tested here.
 
 use std::path::Path;
 
@@ -19,13 +19,8 @@ fn block(source: &str) -> String {
 
 #[test]
 fn the_async_crate_has_the_same_ui_blocks() {
-    let here = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
-    let there = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../rust-m5paperdiy-embassy-examples/examples");
-    if !there.exists() {
-        eprintln!("skipped: {} does not exist", there.display());
-        return;
-    }
+    let here = Path::new(env!("CARGO_MANIFEST_DIR")).join("../blocking/examples");
+    let there = Path::new(env!("CARGO_MANIFEST_DIR")).join("../async/examples");
     for example in ["factory_test", "user_demo", "sd_images", "animated_smiles"] {
         let a = std::fs::read_to_string(here.join(format!("{example}.rs"))).unwrap();
         let b = std::fs::read_to_string(there.join(format!("{example}.rs"))).unwrap();

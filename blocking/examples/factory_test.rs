@@ -3,7 +3,7 @@
 //! A two button menu with four pages, like the sketch: the factory test checklist, Compare (time
 //! each refresh mode), Gray Ramp and the Game of Life. BtnA (GPIO4) moves to the next item or
 //! runs the action, BtnB (GPIO3) selects or leaves a page. The async twin is `factory_test` in
-//! `rust-m5paperdiy-embassy-examples`. `ui.rs` holds the drawing and the Life rules and is the
+//! `async/`. `ui.rs` holds the drawing and the Life rules and is the
 //! same file in both crates.
 //!
 //! ## Run

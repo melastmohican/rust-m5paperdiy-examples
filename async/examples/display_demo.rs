@@ -2,7 +2,7 @@
 //!
 //! Draws the same screen as `~/Src/Arduino/M5PaperDIY/Display`: a triple black border, four
 //! centered lines of text and a bar of four cells (black, dark gray, light gray, black), with
-//! `RefreshMode::M5Quality`. The blocking twin is `display_demo` in `rust-m5paperdiy-examples`. Here `epdpi` runs in async
+//! `RefreshMode::M5Quality`. The blocking twin is `display_demo` in `blocking/`. Here `epdpi` runs in async
 //! mode on the `esp-rtos` Embassy executor and a row waits for the DMA instead of spinning.
 //!
 //! ## Run

@@ -3,7 +3,7 @@
 //! Mounts the microSD card, appends a line to a log file and prints it back, then shows a PNG from
 //! the card. BtnA (GPIO4) shows the previous image and BtnB (GPIO3) the next one, two in all.
 //! The images are decoded to 960 by 540 landscape and shown with `RefreshMode::M5Quality`. The
-//! blocking twin is `sd_images` in `rust-m5paperdiy-examples`. Here `epdpi` runs in async mode on the
+//! blocking twin is `sd_images` in `blocking/`. Here `epdpi` runs in async mode on the
 //! `esp-rtos` Embassy executor; the card is still read with blocking SPI.
 //!
 //! ## Run

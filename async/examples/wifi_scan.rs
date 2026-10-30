@@ -6,7 +6,7 @@
 //! screen comes in stage 2, once the scan is known to work.
 //!
 //! Async only: `esp-radio` needs the `esp-rtos` scheduler, so there is no blocking twin in
-//! `rust-m5paperdiy-examples`.
+//! `blocking/`.
 //!
 //! ## Run
 //!
