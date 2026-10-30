@@ -70,12 +70,19 @@ esp_bootloader_esp_idf::esp_app_desc!();
 /// The poster, an 8 bit gray PNG, 540 by 960.
 const BACKGROUND: &[u8] = include_bytes!("../assets/img_bg.png");
 
+/// The logo shown just before power off, also an 8 bit gray PNG, 540 by 960.
+const LOGO: &[u8] = include_bytes!("../assets/img_logo.png");
+
 /// Drawing helpers. No hardware in here, and this module is the same text in the blocking and
 /// the async crate. The crate root must `use <crate>::epdpi;` for the paths below.
 mod ui {
     use core::fmt::Write;
 
-    use embedded_graphics::{pixelcolor::Gray4, prelude::*};
+    use embedded_graphics::{
+        pixelcolor::Gray4,
+        prelude::*,
+        primitives::{PrimitiveStyleBuilder, Rectangle, RoundedRectangle, StrokeAlignment},
+    };
     use embedded_sdmmc::{
         BlockDevice, Error, Mode, RawDirectory, RawFile, RawVolume, TimeSource, VolumeIdx,
         VolumeManager,
@@ -369,11 +376,28 @@ mod ui {
         b_down: bool,
         pending_a: bool,
         pending_b: bool,
+        suppressed: bool,
     }
 
     impl Clicks {
+        /// Drops the clicks of the press in progress, and ignores the buttons until both are up.
+        /// For a press that did something else, like the power-off hold.
+        pub fn suppress(&mut self) {
+            self.pending_a = false;
+            self.pending_b = false;
+            self.suppressed = true;
+        }
+
         /// Feed the current button states. Returns `(a_clicked, b_clicked)`.
         pub fn update(&mut self, a: bool, b: bool) -> (bool, bool) {
+            if self.suppressed {
+                self.a_down = a;
+                self.b_down = b;
+                if !a && !b {
+                    self.suppressed = false;
+                }
+                return (false, false);
+            }
             self.pending_a |= self.a_down && !a;
             self.pending_b |= self.b_down && !b;
             self.a_down = a;
@@ -1118,6 +1142,234 @@ mod ui {
             }
         }
     }
+
+    /// The power-off dialog, in the middle of the screen.
+    pub const DIALOG_W: i32 = 404;
+    pub const DIALOG_H: i32 = 224;
+    pub const DIALOG_X: i32 = (540 - DIALOG_W) / 2;
+    pub const DIALOG_Y: i32 = (960 - DIALOG_H) / 2;
+    const COUNTDOWN_X: i32 = DIALOG_X + 50;
+    const COUNTDOWN_Y: i32 = DIALOG_Y + 119;
+    const COUNTDOWN_W: i32 = DIALOG_W - 100;
+    const COUNTDOWN_H: i32 = 54;
+
+    /// How long A and B are held before the dialog, and how long after it until power off.
+    pub const ARMING_MS: u64 = 2000;
+    pub const COUNTDOWN_MS: u64 = 5000;
+
+    /// What the power-off flow wants done next.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    pub enum ShutdownAction {
+        Nothing,
+        /// Save the area, draw the dialog, then call [`Shutdown::dialog_shown`].
+        ShowDialog,
+        /// Show this many seconds left.
+        Countdown(u32),
+        /// A button came up: put the area back.
+        Dismiss,
+        /// Show the logo and cut the power.
+        PowerOff,
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum ShutdownState {
+        Idle,
+        Arming(u64),
+        Countdown { since: u64, last: u32 },
+        WaitForRelease,
+    }
+
+    /// Hold A and B for 2 s for a dialog, keep holding for 5 s more to power off. Letting go of
+    /// either button in between cancels: the sketch's `AppShutdown`.
+    pub struct Shutdown {
+        state: ShutdownState,
+    }
+
+    impl Shutdown {
+        pub const fn new() -> Self {
+            Self {
+                state: ShutdownState::Idle,
+            }
+        }
+
+        /// True while the dialog is up, when the other widgets must not draw.
+        pub fn modal(&self) -> bool {
+            matches!(self.state, ShutdownState::Countdown { .. })
+        }
+
+        /// Tells the flow the dialog is on screen, which starts the 5 s.
+        pub fn dialog_shown(&mut self, now_ms: u64) {
+            self.state = ShutdownState::Countdown {
+                since: now_ms,
+                last: 5,
+            };
+        }
+
+        /// Call every few milliseconds with the time and whether both, or any, button is down.
+        pub fn update(&mut self, now_ms: u64, both: bool, any: bool) -> ShutdownAction {
+            match self.state {
+                ShutdownState::Idle => {
+                    if both {
+                        self.state = ShutdownState::Arming(now_ms);
+                    }
+                    ShutdownAction::Nothing
+                }
+                ShutdownState::Arming(since) => {
+                    if !both {
+                        self.state = ShutdownState::Idle;
+                        ShutdownAction::Nothing
+                    } else if now_ms - since >= ARMING_MS {
+                        ShutdownAction::ShowDialog
+                    } else {
+                        ShutdownAction::Nothing
+                    }
+                }
+                ShutdownState::Countdown { since, last } => {
+                    if !both {
+                        self.state = ShutdownState::WaitForRelease;
+                        return ShutdownAction::Dismiss;
+                    }
+                    let elapsed = now_ms - since;
+                    if elapsed >= COUNTDOWN_MS {
+                        return ShutdownAction::PowerOff;
+                    }
+                    let seconds = 5 - (elapsed / 1000) as u32;
+                    if seconds != last {
+                        self.state = ShutdownState::Countdown {
+                            since,
+                            last: seconds,
+                        };
+                        return ShutdownAction::Countdown(seconds);
+                    }
+                    ShutdownAction::Nothing
+                }
+                ShutdownState::WaitForRelease => {
+                    if !any {
+                        self.state = ShutdownState::Idle;
+                    }
+                    ShutdownAction::Nothing
+                }
+            }
+        }
+    }
+
+    impl Default for Shutdown {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// The pixels under a rectangle, to put back when a dialog goes away.
+    pub struct Saved {
+        x: i32,
+        y: i32,
+        w: i32,
+        pixels: alloc::vec::Vec<u8>,
+    }
+
+    impl Saved {
+        pub fn capture(fb: &Fb<'_>, x: i32, y: i32, w: i32, h: i32) -> Self {
+            let mut pixels = alloc::vec::Vec::with_capacity((w * h) as usize);
+            for yy in y..y + h {
+                for xx in x..x + w {
+                    pixels.push(fb.logical_pixel(xx as u32, yy as u32).unwrap_or(15));
+                }
+            }
+            Self { x, y, w, pixels }
+        }
+
+        pub fn restore(&self, fb: &mut Fb<'_>) {
+            for (i, &gray) in self.pixels.iter().enumerate() {
+                let (dx, dy) = (i as i32 % self.w, i as i32 / self.w);
+                fb.set_logical_pixel((self.x + dx) as u32, (self.y + dy) as u32, gray);
+            }
+        }
+    }
+
+    /// Draws the power-off dialog: a white box with a double border and the 5 second message.
+    pub fn draw_dialog(fb: &mut Fb<'_>) {
+        use HorizontalAlignment::Center;
+        use VerticalPosition::Center as Middle;
+        let style = PrimitiveStyleBuilder::new()
+            .fill_color(Gray4::new(15))
+            .stroke_color(Gray4::new(0))
+            .stroke_width(2)
+            .stroke_alignment(StrokeAlignment::Inside)
+            .build();
+        let rect = Rectangle::new(
+            Point::new(DIALOG_X, DIALOG_Y),
+            Size::new(DIALOG_W as u32, DIALOG_H as u32),
+        );
+        let _ = RoundedRectangle::with_equal_corners(rect, Size::new(6, 6))
+            .into_styled(style)
+            .draw(fb);
+        let mid = DIALOG_X + DIALOG_W / 2;
+        let title = FontRenderer::new::<fonts::u8g2_font_fub25_tf>();
+        let bold = FontRenderer::new::<fonts::u8g2_font_fub17_tf>();
+        let small = FontRenderer::new::<fonts::u8g2_font_helvR12_tf>();
+        let big = FontRenderer::new::<fonts::u8g2_font_fub35_tf>();
+        text(
+            fb,
+            &title,
+            format_args!("POWER OFF"),
+            mid,
+            DIALOG_Y + 34,
+            Center,
+            Middle,
+        );
+        fill(fb, DIALOG_X + 24, DIALOG_Y + 59, DIALOG_W - 48, 1, 10);
+        text(
+            fb,
+            &bold,
+            format_args!("KEEP HOLDING A + B"),
+            mid,
+            DIALOG_Y + 87,
+            Center,
+            Middle,
+        );
+        text(
+            fb,
+            &small,
+            format_args!("POWER OFF IN"),
+            mid,
+            DIALOG_Y + 113,
+            Center,
+            Middle,
+        );
+        text(
+            fb,
+            &big,
+            format_args!("5 SECONDS"),
+            mid,
+            DIALOG_Y + 146,
+            Center,
+            Middle,
+        );
+        text(
+            fb,
+            &small,
+            format_args!("RELEASE EITHER BUTTON TO CANCEL"),
+            mid,
+            DIALOG_Y + 196,
+            Center,
+            Middle,
+        );
+    }
+
+    /// Redraws the seconds line of the dialog.
+    pub fn draw_countdown(fb: &mut Fb<'_>, seconds: u32) {
+        fill(fb, COUNTDOWN_X, COUNTDOWN_Y, COUNTDOWN_W, COUNTDOWN_H, 15);
+        let big = FontRenderer::new::<fonts::u8g2_font_fub35_tf>();
+        text(
+            fb,
+            &big,
+            format_args!("{seconds} SECONDS"),
+            COUNTDOWN_X + COUNTDOWN_W / 2,
+            COUNTDOWN_Y + COUNTDOWN_H / 2,
+            HorizontalAlignment::Center,
+            VerticalPosition::Center,
+        );
+    }
 }
 
 /// No clock on the board, so test files get a fixed date.
@@ -1332,6 +1584,8 @@ fn main() -> ! {
 
     let mut clicks = ui::Clicks::default();
     let mut partials = ui::Partials::default();
+    let mut shutdown = ui::Shutdown::new();
+    let mut saved: Option<ui::Saved> = None;
     let (mut a_down, mut b_down) = (false, false);
     loop {
         let (a, b) = (btn_a.is_low(), btn_b.is_low());
@@ -1352,8 +1606,62 @@ fn main() -> ! {
             );
             (a_down, b_down) = (a, b);
         }
+        // Hold A and B: a power-off dialog after 2 s, power off 5 s later, let go to cancel.
+        match shutdown.update(now_ms(), a && b, a || b) {
+            ui::ShutdownAction::Nothing => {}
+            ui::ShutdownAction::ShowDialog => {
+                clicks.suppress();
+                saved = Some(ui::Saved::capture(
+                    &fb,
+                    ui::DIALOG_X,
+                    ui::DIALOG_Y,
+                    ui::DIALOG_W,
+                    ui::DIALOG_H,
+                ));
+                ui::draw_dialog(&mut fb);
+                let took =
+                    show_region(&mut display, &mut fb, RefreshMode::M5Quality, &mut partials);
+                shutdown.dialog_shown(now_ms());
+                info!("power-off dialog: refresh {} ms", took);
+            }
+            ui::ShutdownAction::Countdown(seconds) => {
+                ui::draw_countdown(&mut fb, seconds);
+                let took =
+                    show_region(&mut display, &mut fb, RefreshMode::M5Fastest, &mut partials);
+                info!("power off in {} s: refresh {} ms", seconds, took);
+            }
+            ui::ShutdownAction::Dismiss => {
+                if let Some(saved) = saved.take() {
+                    saved.restore(&mut fb);
+                    let took =
+                        show_region(&mut display, &mut fb, RefreshMode::M5Quality, &mut partials);
+                    info!("power off cancelled: refresh {} ms", took);
+                }
+            }
+            ui::ShutdownAction::PowerOff => {
+                // The logo, then the power off command, repeated until the board is off.
+                info!("powering off");
+                if let Ok(header) = minipng::decode_png_header(LOGO) {
+                    let mut scratch = vec![0u8; header.required_bytes()];
+                    if let Ok(image) = minipng::decode_png(LOGO, &mut scratch) {
+                        ui::draw_gray8(&mut fb, image.pixels(), image.width(), image.height());
+                    }
+                }
+                if display.refresh(&fb, RefreshMode::M5Quality).is_err() {
+                    error!("logo refresh failed");
+                }
+                loop {
+                    if i2c.write(pmic::ADDR, &[0x0C, 0xA1]).is_err() {
+                        error!("power off command failed");
+                    }
+                    delay.delay_ms(1000);
+                }
+            }
+        }
+        // The other widgets wait while the dialog is up, so nothing draws over it.
+        let paused = shutdown.modal();
         // A click of A starts a scan, unless one is running.
-        if a_clicked && wifi.start() {
+        if !paused && a_clicked && wifi.start() {
             if let Some(controller) = idle.take() {
                 scan = Some(Box::pin(scan_owned(controller, scan_config)));
                 ui::draw_wifi(&mut fb, &wifi, ui::WifiDraw::Scanning);
@@ -1365,7 +1673,8 @@ fn main() -> ! {
             info!("wifi box: refresh {} ms", took);
         }
         // A scan that finished: show the list.
-        if let Some(task) = scan.as_mut()
+        if !paused
+            && let Some(task) = scan.as_mut()
             && let Poll::Ready((controller, result)) = poll_once(task.as_mut())
         {
             idle = Some(controller);
@@ -1392,7 +1701,9 @@ fn main() -> ! {
                 took
             );
         }
-        if let Some(draw) = card.update(now_ms(), card_detect.is_low(), b_clicked, now_us) {
+        if !paused
+            && let Some(draw) = card.update(now_ms(), card_detect.is_low(), b_clicked, now_us)
+        {
             // The card box: info is a quality refresh, `TESTING...` a text one.
             ui::draw_card(&mut fb, card.info(), card.result(), draw);
             let mode = match draw {
@@ -1407,7 +1718,9 @@ fn main() -> ! {
                 (result.write_mibs * 1024.0) as u32,
                 (result.read_mibs * 1024.0) as u32
             );
-        } else if let Some(text) = battery.poll(now_ms(), a || b, || battery_mv(&mut i2c)) {
+        } else if !paused
+            && let Some(text) = battery.poll(now_ms(), a || b, || battery_mv(&mut i2c))
+        {
             // A new reading, shown in its box only.
             ui::draw_battery(&mut fb, text.as_str());
             let took = show_region(&mut display, &mut fb, RefreshMode::M5Text, &mut partials);
