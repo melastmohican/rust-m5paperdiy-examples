@@ -7,6 +7,7 @@ pub mod epub;
 pub mod html;
 pub mod layout;
 pub mod reader;
+pub mod render;
 
 /// The `Storage` trait the zip reader reads through, re-exported so the examples and the tests
 /// implement it without a dependency of their own.

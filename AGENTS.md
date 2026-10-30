@@ -6,8 +6,9 @@ this repository (`../epdpi`). One repository, four folders, each its own Cargo p
 - `blocking/`: the examples on the blocking API. Its `AGENTS.md` has the rules, naming and commands.
 - `async/`: the async twin of every port, same names. Its `AGENTS.md` has its own rules.
 - `common/`: hardware-free code shared by both. No `esp-hal`, no blocking or async code. Today it holds the EPUB reader's engine: `epub.rs` (container, package and table of
-  contents), `html.rs` (XHTML to blocks) and `layout.rs` (line breaking and pages, over a `TextMetrics` trait) and `reader.rs` (the book list, contents and
-  reading screens and what the buttons do, over a `Library` trait). `epub.rs` reads through the `Storage` trait of `paperpaw-platform` (the zip and XML
+  contents), `html.rs` (XHTML to blocks) and `layout.rs` (line breaking and pages, over a `TextMetrics` trait) `reader.rs` (the book list, contents and
+  reading screens and what the buttons do, over a `Library` trait) and `render.rs` (drawing them into any 4 bit gray
+  `embedded-graphics` target with `u8g2` Times fonts). `UI_DUMP=/dir host-tests/run.sh --test epub_render` writes the screens as pictures. `epub.rs` reads through the `Storage` trait of `paperpaw-platform` (the zip and XML
   crates `paperpaw-zip` and `paperpaw-xml` are pinned exactly, they are beta). It must build for `xtensa-esp32s3-none-elf`.
 - `host-tests/`: tests for `common/` and for the `mod ui` blocks of the examples.
 

@@ -196,6 +196,23 @@ impl Layout {
     }
 }
 
+/// Breaks `text` into lines of at most `width` pixels, left aligned, with the same line breaker as
+/// a paragraph. A word wider than `width` has a line of its own. For titles in lists.
+pub fn wrap_text(text: &str, metrics: &dyn TextMetrics, width: u32) -> Vec<alloc::string::String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let widths: Vec<u32> = words
+        .iter()
+        .map(|word| metrics.text_width(word, false, false))
+        .collect();
+    let mut lines = Vec::new();
+    let mut start = 0usize;
+    for end in break_lines(&widths, metrics.space_width(), width) {
+        lines.push(words[start..end as usize].join(" "));
+        start = end as usize;
+    }
+    lines
+}
+
 impl TextBlock {
     /// Works out the line breaks and the position of every word for a line `page_width` wide.
     pub(crate) fn layout(&mut self, metrics: &dyn TextMetrics, page_width: u32) {
