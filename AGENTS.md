@@ -44,3 +44,23 @@ dependency set for an example's sake.
   `cargo tree -d | grep esp-alloc`), or the heap that `init!` and `heap_allocator!` fill is not the
   one that allocates. `wifi_scan` starts `esp-rtos` without its Embassy executor and runs the async
   scan with `embassy_futures::block_on`, because `esp-radio` 0.18 has no blocking scan.
+
+## Host tests
+
+`host-tests/` is a separate crate (its own `[workspace]`, not built by the commands above) that
+tests the hardware-free `mod ui` blocks of `examples/factory_test.rs` and `examples/user_demo.rs`
+on the host. `build.rs` copies each block out of its example, so the tests cover the code the
+board runs. They draw into a real `EpdFrameBuffer`, decode the real poster, and run the card
+speed test against a RAM disk holding a FAT32 volume built in code.
+
+```bash
+host-tests/run.sh                    # all tests, from any directory
+host-tests/run.sh --no-fail-fast     # see every failing file, not just the first
+UI_DUMP=/some/dir host-tests/run.sh  # also writes the rendered pages as .pgm and .raw files
+```
+
+Use `run.sh`, not plain `cargo test` inside the folder: `.cargo/config.toml` here forces the ESP
+target and `build-std`, and cargo reads it from the directory it starts in. `async_copy` checks
+that the async crate's `mod ui` blocks are the same text, and is skipped when that crate is not
+checked out next to this one. Change a `mod ui` block in one crate and you must copy it to the
+other.

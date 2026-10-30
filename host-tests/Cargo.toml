@@ -1,0 +1,21 @@
+[package]
+name = "host-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Host tests for the hardware-free `mod ui` blocks of the factory_test and user_demo examples"
+
+# Its own root, so the examples crate above it never sees this package. Run it with `./run.sh`.
+[workspace]
+
+[dependencies]
+# Sibling checkout, like the examples crate. Blocking API, with the graphics feature.
+epdpi = { path = "../../epdpi/epdpi" }
+embedded-graphics = "0.8.1"
+embedded-sdmmc = "0.7.0"
+minipng = "1.0"
+u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
+
+[profile.dev]
+# The poster is 518,400 pixels and the card tests move a megabyte, so keep debug builds quick.
+opt-level = 2
