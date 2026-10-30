@@ -21,6 +21,7 @@ m5paperdiy-common = { path = "../common", default-features = false }
 embedded-graphics = "0.8.1"
 embedded-sdmmc = "0.10.0"
 minipng = "1.0"
+miniz_oxide = { version = "0.9", default-features = false, features = ["with-alloc"] }
 u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
 
 [profile.dev]

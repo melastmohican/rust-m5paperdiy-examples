@@ -39,6 +39,12 @@ jobs:
           - crate: async
             command: clippy
             args: --lib --examples -- -D warnings
+          - crate: common
+            command: fmt
+            args: --all -- --check
+          - crate: common
+            command: clippy
+            args: --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc -- -D warnings
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
