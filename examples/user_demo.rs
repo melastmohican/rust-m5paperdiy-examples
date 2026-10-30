@@ -36,8 +36,14 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::vec;
+use alloc::vec::Vec;
+use core::future::Future;
+use core::pin::Pin;
+use core::task::Poll;
 use defmt::{error, info};
+use embassy_futures::poll_once;
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use embedded_hal::i2c::I2c;
@@ -49,8 +55,12 @@ use esp_hal::delay::Delay;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::spi::Mode as SpiMode;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
+use esp_hal::time::Duration as RadioDuration;
 use esp_hal::time::{Instant, Rate};
 use esp_println as _;
+use esp_radio::wifi::ap::AccessPointInfo;
+use esp_radio::wifi::scan::{ScanConfig, ScanTypeConfig};
+use esp_radio::wifi::{ControllerConfig, WifiController, WifiError};
 use rust_m5paperdiy_examples::{epdpi, pmic};
 
 use epdpi::prelude::*;
@@ -156,17 +166,22 @@ mod ui {
         );
     }
 
-    /// A short text in a fixed buffer.
+    /// A short text in a fixed buffer of `N` bytes. Text that does not fit is cut off.
     #[derive(Clone, Copy, PartialEq, Eq)]
-    pub struct Text {
-        buf: [u8; 16],
+    pub struct Buf<const N: usize> {
+        buf: [u8; N],
         len: usize,
     }
 
-    impl Text {
+    /// The voltage and similar short texts.
+    pub type Text = Buf<16>;
+    /// An SSID, up to 32 bytes, with room for the `.` that marks a trimmed one.
+    pub type Ssid = Buf<40>;
+
+    impl<const N: usize> Buf<N> {
         pub const fn new() -> Self {
             Self {
-                buf: [0; 16],
+                buf: [0; N],
                 len: 0,
             }
         }
@@ -176,13 +191,20 @@ mod ui {
         }
     }
 
-    impl Write for Text {
+    impl<const N: usize> Write for Buf<N> {
         fn write_str(&mut self, s: &str) -> core::fmt::Result {
-            let end = self.len + s.len();
-            let dst = self.buf.get_mut(self.len..end).ok_or(core::fmt::Error)?;
-            dst.copy_from_slice(s.as_bytes());
-            self.len = end;
-            Ok(())
+            // Copy what fits, then report the cut. Cut on a character boundary.
+            let mut take = s.len().min(N - self.len);
+            while !s.is_char_boundary(take) {
+                take -= 1;
+            }
+            self.buf[self.len..self.len + take].copy_from_slice(&s.as_bytes()[..take]);
+            self.len += take;
+            if take < s.len() {
+                Err(core::fmt::Error)
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -912,6 +934,190 @@ mod ui {
             }
         }
     }
+
+    /// The Wi-Fi list box on the poster.
+    pub const WIFI_X: i32 = 121;
+    pub const WIFI_Y: i32 = 503;
+    pub const WIFI_W: i32 = 418 - WIFI_X;
+    pub const WIFI_H: i32 = 715 - WIFI_Y;
+    const ROW_H: i32 = 24;
+    const LIST_PAD_X: i32 = 8;
+    const LIST_PAD_Y: i32 = 9;
+    const RSSI_W: i32 = 72;
+
+    /// One access point: its name and signal strength in dBm.
+    pub struct Network {
+        pub ssid: Ssid,
+        pub rssi: i32,
+    }
+
+    /// What the Wi-Fi box shows next.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum WifiDraw {
+        /// `SCANNING...`
+        Scanning,
+        /// A message such as `SCAN FAILED`.
+        Failed(&'static str),
+        /// The list of networks.
+        Results,
+    }
+
+    /// The Wi-Fi scan widget, the `AppWifiScan` of the sketch: the scan itself is run by the
+    /// caller, this keeps the list and the rule that one scan runs at a time.
+    #[derive(Default)]
+    pub struct WifiApp {
+        networks: alloc::vec::Vec<Network>,
+        scanning: bool,
+    }
+
+    impl WifiApp {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        #[allow(dead_code)] // for the host tests
+        pub fn scanning(&self) -> bool {
+            self.scanning
+        }
+
+        /// Marks a scan as started. False when one is already running.
+        pub fn start(&mut self) -> bool {
+            if self.scanning {
+                return false;
+            }
+            self.scanning = true;
+            true
+        }
+
+        /// Takes the result of a scan, strongest signal first.
+        pub fn finish<'a>(&mut self, found: impl IntoIterator<Item = (&'a str, i32)>) {
+            self.networks.clear();
+            for (name, rssi) in found {
+                let mut ssid = Ssid::new();
+                let _ = ssid.write_str(name);
+                self.networks.push(Network { ssid, rssi });
+            }
+            self.networks.sort_by_key(|n| core::cmp::Reverse(n.rssi));
+            self.scanning = false;
+        }
+
+        /// A scan that did not start or did not finish.
+        pub fn fail(&mut self) {
+            self.scanning = false;
+        }
+
+        pub fn networks(&self) -> &[Network] {
+            &self.networks
+        }
+    }
+
+    /// Width in pixels of `text` in `font`.
+    fn text_width(font: &FontRenderer, text: &str) -> i32 {
+        font.get_rendered_dimensions(text, Point::zero(), VerticalPosition::Baseline)
+            .ok()
+            .and_then(|d| d.bounding_box)
+            .map_or(0, |b| b.size.width as i32)
+    }
+
+    /// Trims `name` (on character boundaries) until it fits `max_width`, ending in `.`. An empty
+    /// name reads `<hidden>`.
+    pub fn fit_ssid(font: &FontRenderer, name: &str, max_width: i32) -> Ssid {
+        let name = if name.is_empty() { "<hidden>" } else { name };
+        let mut out = Ssid::new();
+        if text_width(font, name) <= max_width {
+            let _ = out.write_str(name);
+            return out;
+        }
+        let mut end = name.len();
+        while end > 0 {
+            end -= 1;
+            while end > 0 && !name.is_char_boundary(end) {
+                end -= 1;
+            }
+            let mut trial = Ssid::new();
+            let _ = write!(trial, "{}.", &name[..end]);
+            if text_width(font, trial.as_str()) <= max_width {
+                return trial;
+            }
+        }
+        let _ = out.write_str(".");
+        out
+    }
+
+    /// Clears the Wi-Fi box and draws `what` in it: the sketch's `drawStatus` and `drawResults`.
+    pub fn draw_wifi(fb: &mut Fb<'_>, app: &WifiApp, what: WifiDraw) {
+        use HorizontalAlignment::{Center, Left, Right};
+        use VerticalPosition::Center as Middle;
+        fill(fb, WIFI_X, WIFI_Y, WIFI_W, WIFI_H, 15);
+        let (mid_x, mid_y) = (WIFI_X + WIFI_W / 2, WIFI_Y + WIFI_H / 2);
+        match what {
+            WifiDraw::Scanning => {
+                let bold = FontRenderer::new::<fonts::u8g2_font_fub17_tf>();
+                text(
+                    fb,
+                    &bold,
+                    format_args!("SCANNING..."),
+                    mid_x,
+                    mid_y,
+                    Center,
+                    Middle,
+                );
+            }
+            WifiDraw::Failed(message) => {
+                let medium = FontRenderer::new::<fonts::u8g2_font_helvR18_tf>();
+                text(
+                    fb,
+                    &medium,
+                    format_args!("{message}"),
+                    mid_x,
+                    mid_y,
+                    Center,
+                    Middle,
+                );
+            }
+            WifiDraw::Results => {
+                let small = FontRenderer::new::<fonts::u8g2_font_helvR12_tf>();
+                if app.networks().is_empty() {
+                    text(
+                        fb,
+                        &small,
+                        format_args!("NO NETWORKS"),
+                        mid_x,
+                        mid_y,
+                        Center,
+                        Middle,
+                    );
+                    return;
+                }
+                let rows = ((WIFI_H - LIST_PAD_Y * 2) / ROW_H) as usize;
+                let rssi_right = WIFI_X + WIFI_W - 8;
+                let ssid_x = WIFI_X + LIST_PAD_X;
+                let ssid_w = rssi_right - RSSI_W - ssid_x - 4;
+                for (row, network) in app.networks().iter().take(rows).enumerate() {
+                    let center = WIFI_Y + LIST_PAD_Y + row as i32 * ROW_H + ROW_H / 2;
+                    let ssid = fit_ssid(&small, network.ssid.as_str(), ssid_w);
+                    text(
+                        fb,
+                        &small,
+                        format_args!("{}", ssid.as_str()),
+                        ssid_x,
+                        center,
+                        Left,
+                        Middle,
+                    );
+                    text(
+                        fb,
+                        &small,
+                        format_args!("{}dBm", network.rssi),
+                        rssi_right,
+                        center,
+                        Right,
+                        Middle,
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// No clock on the board, so test files get a fixed date.
@@ -941,6 +1147,20 @@ impl<S: SpiDevice<u8>, C: OutputPin, D: DelayNs> ui::Card for SdCard<S, C, D> {
     fn forget(&self) {
         self.mark_card_uninit();
     }
+}
+
+/// A finished scan and the controller it ran on.
+type ScanDone = (
+    WifiController<'static>,
+    Result<Vec<AccessPointInfo>, WifiError>,
+);
+type ScanTask = Pin<Box<dyn Future<Output = ScanDone>>>;
+
+/// Runs one scan. It owns the controller meanwhile and hands it back, so nothing stays
+/// borrowed between loop passes.
+async fn scan_owned(mut controller: WifiController<'static>, config: ScanConfig) -> ScanDone {
+    let result = controller.scan_async(&config).await;
+    (controller, result)
 }
 
 /// Battery voltage in mV from the M5PM1 (registers 0x22 and 0x23, little endian).
@@ -983,6 +1203,32 @@ fn show_region<B: EpdParallelBus>(
 #[esp_hal::main]
 fn main() -> ! {
     let p = rust_m5paperdiy_examples::init!();
+    // The radio wants internal RAM, the sizes the `esp-radio` docs give. These go on the
+    // `esp-alloc` that `esp-radio` and `esp-rtos` use, hence `esp-alloc` 0.10 in this crate.
+    rust_m5paperdiy_examples::esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 64 * 1024);
+    rust_m5paperdiy_examples::esp_alloc::heap_allocator!(size: 36 * 1024);
+    // `esp-radio` needs the `esp-rtos` scheduler, here without its Embassy executor. The scan is
+    // async only, so the loop below polls it with `poll_once` instead of waiting for it.
+    let timg0 = esp_hal::timer::timg::TimerGroup::new(p.TIMG0);
+    let sw_interrupt = esp_hal::interrupt::software::SoftwareInterruptControl::new(p.SW_INTERRUPT);
+    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
+    let mut idle = match esp_radio::wifi::new(p.WIFI, ControllerConfig::default()) {
+        Ok((controller, _interfaces)) => Some(controller),
+        Err(_) => {
+            error!("wifi init failed");
+            None
+        }
+    };
+    // Active scan, 120 ms per channel, hidden networks shown, like the sketch.
+    let scan_config = ScanConfig::default()
+        .with_show_hidden(true)
+        .with_scan_type(ScanTypeConfig::Active {
+            min: RadioDuration::from_millis(120),
+            max: RadioDuration::from_millis(120),
+        })
+        .with_max(20);
+    let mut scan: Option<ScanTask> = None;
+    let mut wifi = ui::WifiApp::new();
     let mut i2c = rust_m5paperdiy_examples::pmic_i2c!(p);
     let mut delay = Delay::new();
     let _ = pmic::epd_power_on(&mut i2c, &mut delay);
@@ -1066,6 +1312,17 @@ fn main() -> ! {
     let first = card.begin(now_ms(), card_detect.is_low());
     ui::draw_card(&mut fb, card.info(), card.result(), first);
 
+    // The Wi-Fi box, like the sketch's `AppWifiScan::begin`: the scan starts now and is shown when
+    // it is done.
+    wifi.start();
+    if let Some(controller) = idle.take() {
+        scan = Some(Box::pin(scan_owned(controller, scan_config)));
+        ui::draw_wifi(&mut fb, &wifi, ui::WifiDraw::Scanning);
+    } else {
+        wifi.fail();
+        ui::draw_wifi(&mut fb, &wifi, ui::WifiDraw::Failed("SCAN START FAILED"));
+    }
+
     if display.refresh(&fb, RefreshMode::M5Quality).is_err() {
         error!("background refresh failed");
     }
@@ -1078,7 +1335,7 @@ fn main() -> ! {
     let (mut a_down, mut b_down) = (false, false);
     loop {
         let (a, b) = (btn_a.is_low(), btn_b.is_low());
-        let (_, b_clicked) = clicks.update(a, b);
+        let (a_clicked, b_clicked) = clicks.update(a, b);
         if a != a_down || b != b_down {
             if a != a_down {
                 ui::draw_border(&mut fb, ui::BORDER_A_Y, a);
@@ -1094,6 +1351,46 @@ fn main() -> ! {
                 took
             );
             (a_down, b_down) = (a, b);
+        }
+        // A click of A starts a scan, unless one is running.
+        if a_clicked && wifi.start() {
+            if let Some(controller) = idle.take() {
+                scan = Some(Box::pin(scan_owned(controller, scan_config)));
+                ui::draw_wifi(&mut fb, &wifi, ui::WifiDraw::Scanning);
+            } else {
+                wifi.fail();
+                ui::draw_wifi(&mut fb, &wifi, ui::WifiDraw::Failed("SCAN START FAILED"));
+            }
+            let took = show_region(&mut display, &mut fb, RefreshMode::M5Text, &mut partials);
+            info!("wifi box: refresh {} ms", took);
+        }
+        // A scan that finished: show the list.
+        if let Some(task) = scan.as_mut()
+            && let Poll::Ready((controller, result)) = poll_once(task.as_mut())
+        {
+            idle = Some(controller);
+            scan = None;
+            let (what, mode) = match result {
+                Ok(found) => {
+                    wifi.finish(
+                        found
+                            .iter()
+                            .map(|ap| (ap.ssid.as_str(), i32::from(ap.signal_strength))),
+                    );
+                    (ui::WifiDraw::Results, RefreshMode::M5Quality)
+                }
+                Err(_) => {
+                    wifi.fail();
+                    (ui::WifiDraw::Failed("SCAN FAILED"), RefreshMode::M5Text)
+                }
+            };
+            ui::draw_wifi(&mut fb, &wifi, what);
+            let took = show_region(&mut display, &mut fb, mode, &mut partials);
+            info!(
+                "wifi box: {} networks, refresh {} ms",
+                wifi.networks().len(),
+                took
+            );
         }
         if let Some(draw) = card.update(now_ms(), card_detect.is_low(), b_clicked, now_us) {
             // The card box: info is a quality refresh, `TESTING...` a text one.
