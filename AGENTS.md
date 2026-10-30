@@ -53,7 +53,8 @@ dependency set for an example's sake.
 ## Host tests
 
 `host-tests/` is a separate crate (its own `[workspace]`, not built by the commands above) that
-tests the hardware-free `mod ui` blocks of `examples/factory_test.rs` and `examples/user_demo.rs`
+tests the hardware-free `mod ui` blocks of `examples/factory_test.rs`, `examples/user_demo.rs` and
+`examples/sd_images.rs`
 on the host. `build.rs` copies each block out of its example, so the tests cover the code the
 board runs. They draw into a real `EpdFrameBuffer`, decode the real poster, and run the card
 speed test against a RAM disk holding a FAT32 volume built in code.

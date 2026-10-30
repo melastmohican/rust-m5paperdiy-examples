@@ -86,9 +86,9 @@ These cost time to find. They are recorded here so the next person does not repe
 
 ## Host tests
 
-`host-tests/` is a separate crate with 33 tests for the hardware-free code of `factory_test` and
-`user_demo`: the Game of Life, button handling, the dither, the widgets' state machines, the card
-speed test against a RAM disk holding a FAT32 volume, and the power-off timing. A build script
+`host-tests/` is a separate crate with 51 tests for the hardware-free code of `factory_test`,
+`user_demo` and `sd_images`: the Game of Life, button handling, the dither, the widgets' state machines, the card
+speed test, the image search and the log file against a RAM disk holding a FAT32 volume, and the power-off timing. A build script
 copies the `mod ui` block out of each example, so the tests run the code the board runs.
 
 ```bash
