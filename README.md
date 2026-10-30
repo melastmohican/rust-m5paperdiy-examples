@@ -41,4 +41,4 @@ has mutually exclusive blocking and async modes, and one Cargo workspace would u
 GPL-3.0-only. See [`LICENSE`](LICENSE).
 
 The ported sketches and the artwork in `blocking/assets/` and `async/assets/` come from M5Stack's
-MIT-licensed [PaperDIY UserDemo](https://github.com/m5stack) (Copyright (c) 2026 M5Stack Technology CO LTD) and keep that notice.
+MIT-licensed [PaperDIY UserDemo](https://github.com/m5stack/M5PaperDIY-UserDemo) (Copyright (c) 2026 M5Stack Technology CO LTD) and keep that notice.

@@ -140,4 +140,4 @@ root directory and times a read. `wifi_scan` scans every 5 s and logs the access
 GPL-3.0-only. See [`LICENSE`](LICENSE).
 
 The ported sketches and the artwork in `assets/` come from M5Stack's MIT-licensed
-[PaperDIY UserDemo](https://github.com/m5stack) (Copyright (c) 2026 M5Stack Technology CO LTD) and keep that notice.
+[PaperDIY UserDemo](https://github.com/m5stack/M5PaperDIY-UserDemo) (Copyright (c) 2026 M5Stack Technology CO LTD) and keep that notice.
