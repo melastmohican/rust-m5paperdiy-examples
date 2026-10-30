@@ -9,7 +9,7 @@ API on Embassy.
 | :--- | :--- |
 | [`blocking/`](blocking) | The blocking examples: ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples), proofs that a part works, board support. Start with its [README](blocking/README.md). |
 | [`async/`](async) | The async (Embassy) twin of every port, same names. See its [README](async/README.md). |
-| [`common/`](common) | Hardware-free code shared by both, tested on the host in both modes. Today: the EPUB container, package and table of contents reader (`common/src/epub.rs`). |
+| [`common/`](common) | Hardware-free code shared by both, tested on the host in both modes. Today: the EPUB reader's engine, the container, package and table of contents (`epub.rs`), XHTML to blocks (`html.rs`) and lines to pages (`layout.rs`). |
 | [`host-tests/`](host-tests) | Host tests for the hardware-free code, run in blocking and in async mode. |
 
 The `bringup` branch holds the bring-up diagnostics for the `epdpi` library, described in

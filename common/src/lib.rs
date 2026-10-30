@@ -4,6 +4,8 @@
 extern crate alloc;
 
 pub mod epub;
+pub mod html;
+pub mod layout;
 
 /// The `Storage` trait the zip reader reads through, re-exported so the examples and the tests
 /// implement it without a dependency of their own.
