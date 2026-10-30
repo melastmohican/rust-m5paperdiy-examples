@@ -73,6 +73,7 @@ impl Write for Name {
 #[esp_hal::main]
 fn main() -> ! {
     let p = rust_m5paperdiy_examples::init!();
+    info!("poc_sd: Rust, blocking");
     let delay = Delay::new();
 
     let spi = Spi::new(

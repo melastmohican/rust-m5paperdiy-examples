@@ -47,6 +47,9 @@ use u8g2_fonts::{
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+/// Which build this is, so a photo says it.
+const BUILD: &str = "Rust: epdpi blocking";
+
 /// M5PM1 registers: the 31 bit timer count (little endian), its configuration and its reload key,
 /// and the system command register.
 const REG_TIM_CNT: u8 = 0x38;
@@ -107,6 +110,13 @@ fn fonts() -> (FontRenderer, FontRenderer) {
     )
 }
 
+/// `BUILD`, small, at the bottom of the page.
+fn draw_label(fb: &mut EpdFrameBuffer<'_, Ed047tc1>) {
+    let font = FontRenderer::new::<fonts::u8g2_font_helvR14_tf>();
+    let (w, h) = fb.logical_size();
+    text(fb, &font, BUILD, w as i32 / 2, h as i32 - 30);
+}
+
 /// A title and a line under it, in the middle of the screen.
 fn draw_message(fb: &mut EpdFrameBuffer<'_, Ed047tc1>, line1: &str, line2: &str) {
     fb.fill(0xF);
@@ -115,6 +125,7 @@ fn draw_message(fb: &mut EpdFrameBuffer<'_, Ed047tc1>, line1: &str, line2: &str)
     let (cx, cy) = (w as i32 / 2, h as i32 / 2);
     text(fb, &big, line1, cx, cy - 30);
     text(fb, &small, line2, cx, cy + 35);
+    draw_label(fb);
 }
 
 /// The first page: what the two buttons do.
@@ -127,6 +138,7 @@ fn draw_home(fb: &mut EpdFrameBuffer<'_, Ed047tc1>) {
     text(fb, &small, "Btn A: power on after 3 seconds", cx, cy - 35);
     text(fb, &small, "Btn B: power off after 3 seconds", cx, cy + 20);
     text(fb, &small, "Press A or B to start the timer", cx, cy + 75);
+    draw_label(fb);
 }
 
 #[esp_hal::main]

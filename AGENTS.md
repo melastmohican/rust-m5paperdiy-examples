@@ -32,6 +32,9 @@ dependency set for an example's sake.
 
 ## Rules
 
+- Every example says which build it is. With a display: a small `Rust: epdpi blocking` label (`async` in the twin), at a spot the
+  page leaves free. Without one: `info!("<name>: Rust, blocking")` first in `main`. Same words in both crates.
+
 - `src/lib.rs` holds the pin map, `init!` (PSRAM heap), `lcd_bus!`, and the M5PM1
   sequence in `pmic`. Examples stay short by using these. `display_pins!`, `Bus`, `FastBus`, `into_bus()` and
   `into_fast_bus()` are used only by the diagnostics on the `bringup` branch.

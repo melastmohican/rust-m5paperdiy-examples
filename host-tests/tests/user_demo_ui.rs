@@ -237,3 +237,46 @@ fn battery_text_lands_inside_its_box_on_the_poster() {
         )
     );
 }
+
+#[test]
+fn the_build_label_stays_in_the_top_right_corner_above_the_title() {
+    let bytes =
+        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/img_bg.png")).unwrap();
+    let header = minipng::decode_png_header(&bytes).unwrap();
+    let mut scratch = vec![0u8; header.required_bytes()];
+    let image = minipng::decode_png(&bytes, &mut scratch).unwrap();
+    let mut mem = vec![0xFFu8; Ed047tc1::FB_BYTES];
+    let mut fb = EpdFrameBuffer::<Ed047tc1>::new(&mut mem).unwrap();
+    fb.set_rotation(Rotation::Deg270);
+    draw_gray8(&mut fb, image.pixels(), image.width(), image.height());
+    let before: Vec<u8> = (0..960u32)
+        .flat_map(|y| (0..540u32).map(move |x| (x, y)))
+        .map(|(x, y)| fb.logical_pixel(x, y).unwrap())
+        .collect();
+    draw_label(&mut fb, "Rust: epdpi blocking");
+    if let Some(dir) = std::env::var("UI_DUMP").ok().filter(|d| !d.is_empty()) {
+        let mut out = format!("P5\n540 960\n255\n").into_bytes();
+        for y in 0..960u32 {
+            for x in 0..540u32 {
+                out.push(fb.logical_pixel(x, y).unwrap() * 17);
+            }
+        }
+        std::fs::write(format!("{dir}/poster_label.pgm"), out).unwrap();
+    }
+    let (mut ink, mut x0, mut x1, mut y1) = (0, u32::MAX, 0, 0);
+    for y in 0..960u32 {
+        for x in 0..540u32 {
+            let now = fb.logical_pixel(x, y).unwrap();
+            if now != before[(y * 540 + x) as usize] {
+                ink += 1;
+                (x0, x1, y1) = (x0.min(x), x1.max(x), y1.max(y));
+            }
+        }
+    }
+    assert!(ink > 80, "the label has ink: {ink}");
+    // The top 26 rows only, right of the middle, and not to the very edge.
+    assert!(
+        y1 < 26 && x0 > 300 && x1 < 540 - 8,
+        "label box x {x0}..{x1}, bottom {y1}"
+    );
+}

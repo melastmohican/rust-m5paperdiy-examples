@@ -34,6 +34,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_hal::main]
 fn main() -> ! {
     let p = rust_m5paperdiy_examples::init!();
+    info!("wifi_scan: Rust, blocking");
     // The radio wants internal RAM, the sizes the `esp-radio` docs give. These regions go on the
     // `esp-alloc` that `esp-radio` and `esp-rtos` use, so this crate must depend on the same
     // version (0.10). With two copies there are two heaps, and the one that allocates is empty.

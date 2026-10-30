@@ -38,6 +38,7 @@ fn read_mv<I: embedded_hal::i2c::I2c>(i2c: &mut I, reg: u8) -> Option<u16> {
 #[esp_hal::main]
 fn main() -> ! {
     let p = rust_m5paperdiy_examples::init!();
+    info!("poc_battery: Rust, blocking");
     let mut i2c = rust_m5paperdiy_examples::pmic_i2c!(p);
     let delay = Delay::new();
 

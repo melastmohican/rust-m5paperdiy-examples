@@ -25,6 +25,10 @@ bring-up diagnostics in [bringup.md](bringup.md).
 | no prefix | Ports of the Arduino sketches in [m5paperdiy-arduino-examples](https://github.com/melastmohican/m5paperdiy-arduino-examples) | `display_demo`, `buttons`, `text_log_scroll`, `factory_test`, `user_demo`, `pm1_timer`, all working, see [Ports](#ports-of-the-arduino-sketches) |
 | `poc_*`, `wifi_scan` | Proofs that a part works from Rust, with a log and no display | `poc_battery`, `poc_sd`, `wifi_scan`, all working |
 
+Every example says which build it is: a small `Rust: epdpi blocking` label on the screen (`epdpi async` in the
+async twin), or `<name>: Rust, blocking` as the first log line for the ones with no display. A photo or a
+log then tells a Rust build from the Arduino sketch, and a blocking one from an async one.
+
 The diagnostics that proved the `epdpi` driver layer by layer, and the host tests, are described in
 [bringup.md](bringup.md). Their code is on the `bringup` branch.
 

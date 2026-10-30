@@ -40,6 +40,23 @@ use u8g2_fonts::{
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+/// Which build this is, so a photo says it.
+const BUILD: &str = "Rust: epdpi blocking";
+
+/// Draws `BUILD` small in the top right corner, where the log lines do not reach.
+fn draw_label(fb: &mut EpdFrameBuffer<'_, Ed047tc1>) {
+    let font = FontRenderer::new::<fonts::u8g2_font_helvR12_tf>();
+    let (w, _) = fb.logical_size();
+    let _ = font.render_aligned(
+        format_args!("{BUILD}"),
+        Point::new(w as i32 - 12, 14),
+        VerticalPosition::Center,
+        HorizontalAlignment::Right,
+        FontColor::Transparent(Gray4::BLACK),
+        fb,
+    );
+}
+
 /// What the sketch prints, one word per line, in turn.
 const WORDS: [&str; 8] = [
     "hello world",
@@ -148,6 +165,7 @@ fn main() -> ! {
             lines[rows - 1] = line;
         }
         draw_log(&mut fb, &lines[..shown], &font, pitch);
+        draw_label(&mut fb);
 
         let start = Instant::now();
         let result = display.refresh(&fb, RefreshMode::M5Fastest);

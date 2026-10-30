@@ -70,6 +70,9 @@ esp_bootloader_esp_idf::esp_app_desc!();
 /// The poster, an 8 bit gray PNG, 540 by 960.
 const BACKGROUND: &[u8] = include_bytes!("../assets/img_bg.png");
 
+/// Which build this is, so a photo says it. Drawn small in the top right corner of the poster.
+const BUILD: &str = "Rust: epdpi blocking";
+
 /// The logo shown just before power off, also an 8 bit gray PNG, 540 by 960.
 const LOGO: &[u8] = include_bytes!("../assets/img_logo.png");
 
@@ -113,6 +116,21 @@ mod ui {
                 fb.set_logical_pixel(x as u32, y, quantize(value, x as u32, y));
             }
         }
+    }
+
+    /// Draws `label` small in the top right corner of the poster, above the title, to say which
+    /// build this is.
+    pub fn draw_label(fb: &mut Fb<'_>, label: &str) {
+        let font = FontRenderer::new::<fonts::u8g2_font_helvR12_tf>();
+        let (w, _) = fb.logical_size();
+        let _ = font.render_aligned(
+            format_args!("{label}"),
+            Point::new(w as i32 - 12, 13),
+            VerticalPosition::Center,
+            HorizontalAlignment::Right,
+            FontColor::Transparent(Gray4::new(0)),
+            fb,
+        );
     }
 
     /// Left edge, top of the A and B labels, right edge and height of the border.
@@ -1541,6 +1559,7 @@ fn main() -> ! {
     };
     let decoded = now_ms() - start;
     ui::draw_gray8(&mut fb, image.pixels(), image.width(), image.height());
+    ui::draw_label(&mut fb, BUILD);
     drop(scratch);
     let drawn = now_ms() - start - decoded;
     info!(
