@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "adler2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+
+[[package]]
 name = "aead"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1554,6 +1560,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "m5paperdiy-common"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "embedded-sdmmc",
+ "paperpaw-platform",
+ "paperpaw-xml",
+ "paperpaw-zip",
+ "u8g2-fonts",
+]
+
+[[package]]
 name = "manyhow"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1618,6 +1636,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de129e6db0b4c69f59cde83990a5844989a93bbd23ab2dfbe48e68740a59327c"
 
 [[package]]
+name = "miniz_oxide"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
+dependencies = [
+ "adler2",
+]
+
+[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1675,6 +1702,28 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "paperpaw-platform"
+version = "0.5.0-beta.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "231325019dcc907293cb34bf4dc6e7ae90b113e4f1a8d8c904682e23497051f8"
+
+[[package]]
+name = "paperpaw-xml"
+version = "0.5.0-beta.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9cc677fd702e8a972366f5e671d7ef6a78c499c8617d0537f87a5e0dc2ca750"
+
+[[package]]
+name = "paperpaw-zip"
+version = "0.5.0-beta.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "503738bfbae14683331dc4e6ab838c1a6884e7698b3476bfcb4cd0e183af0da2"
+dependencies = [
+ "miniz_oxide",
+ "paperpaw-platform",
+]
 
 [[package]]
 name = "paste"
@@ -1916,6 +1965,7 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
+ "m5paperdiy-common",
  "minipng",
  "profont",
  "u8g2-fonts",

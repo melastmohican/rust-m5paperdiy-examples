@@ -29,6 +29,7 @@ cargo run --release --example user_demo
 | `pm1_timer` | Port of the `M5PM1` sketch: the power chip's timer shuts the board down and brings it back after 3 s (BtnA), or powers it off after 3 s (BtnB). It powers the board off |
 | `sd_images` | Port of the `microSD` sketch: appends to a log file on the card, then shows a PNG from it; A and B flip between two images |
 | `animated_smiles` | Port of FastEPD's `animated_smiles`: eight smileys bounce for 250 frames, each frame refreshing only what moved with `FastMono`, then the panel clears and powers down |
+| `epub_reader` | Port of the `EpubReader` sketch: reads `.epub` books from the microSD card, with the book list, the table of contents and justified pages. A click on A is down, holding A is up, B selects. The reader is in `common/`, the same code as the blocking build; this file is the board, with the display calls awaited. Covers and illustrations are not drawn yet |
 | `wifi_scan` | Logs the access points found by an `esp-radio` scan every 5 s |
 
 Each example's header comment says what to expect. Every example says it is the async build: a small

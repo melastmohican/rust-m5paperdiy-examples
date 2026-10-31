@@ -33,6 +33,7 @@ esp-radio = { version = "0.18.0", features = ["wifi", "esp32s3", "unstable", "de
 embassy-futures = "0.1.2"
 embedded-hal-bus = "0.2.0"
 embedded-sdmmc = "0.10.0"
+m5paperdiy-common = { path = "../common" }
 minipng = "1.0"
 profont = "0.7"
 u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
