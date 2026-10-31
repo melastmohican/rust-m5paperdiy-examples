@@ -125,6 +125,40 @@ fn sample(row: &[u8], index: usize, depth: BitDepth) -> u8 {
     }
 }
 
+/// 8-bit gray of pixel `x` of an unfiltered PNG row: colors become their luma over white, an
+/// indexed pixel goes through `palette` (`[r, g, b, a]`).
+pub(crate) fn pixel_gray(
+    row: &[u8],
+    x: usize,
+    color: ColorType,
+    depth: BitDepth,
+    palette: &dyn Fn(u8) -> [u8; 4],
+) -> u8 {
+    match color {
+        ColorType::Gray => sample(row, x, depth),
+        ColorType::GrayAlpha => {
+            let g = sample(row, x * 2, depth);
+            gray_over_white(g, g, g, sample(row, x * 2 + 1, depth))
+        }
+        ColorType::Rgb => gray_over_white(
+            sample(row, x * 3, depth),
+            sample(row, x * 3 + 1, depth),
+            sample(row, x * 3 + 2, depth),
+            255,
+        ),
+        ColorType::Rgba => gray_over_white(
+            sample(row, x * 4, depth),
+            sample(row, x * 4 + 1, depth),
+            sample(row, x * 4 + 2, depth),
+            sample(row, x * 4 + 3, depth),
+        ),
+        ColorType::Indexed => {
+            let [r, g, b, a] = palette(sample_index(row, x, depth));
+            gray_over_white(r, g, b, a)
+        }
+    }
+}
+
 fn decode_png(bytes: &[u8]) -> Option<Gray> {
     let header = minipng::decode_png_header(bytes).ok()?;
     if header.required_bytes() > MAX_PNG_BYTES {
@@ -141,29 +175,7 @@ fn decode_png(bytes: &[u8]) -> Option<Gray> {
     pixels.try_reserve_exact(width * height).ok()?;
     for row in image.pixels().chunks_exact(per_row).take(height) {
         for x in 0..width {
-            let value = match color {
-                ColorType::Gray => sample(row, x, depth),
-                ColorType::GrayAlpha => {
-                    let g = sample(row, x * 2, depth);
-                    gray_over_white(g, g, g, sample(row, x * 2 + 1, depth))
-                }
-                ColorType::Rgb => gray_over_white(
-                    sample(row, x * 3, depth),
-                    sample(row, x * 3 + 1, depth),
-                    sample(row, x * 3 + 2, depth),
-                    255,
-                ),
-                ColorType::Rgba => gray_over_white(
-                    sample(row, x * 4, depth),
-                    sample(row, x * 4 + 1, depth),
-                    sample(row, x * 4 + 2, depth),
-                    sample(row, x * 4 + 3, depth),
-                ),
-                ColorType::Indexed => {
-                    let [r, g, b, a] = image.palette(sample_index(row, x, depth));
-                    gray_over_white(r, g, b, a)
-                }
-            };
+            let value = pixel_gray(row, x, color, depth, &|index| image.palette(index));
             pixels.push(value);
         }
     }
@@ -211,7 +223,7 @@ pub fn quantize(value: u8, x: u32, y: u32) -> u8 {
 }
 
 /// The range of source pixels, of `from` in all, that destination pixel `dest` of `to` covers.
-fn source_range(dest: u32, from: u32, to: u32) -> (u32, u32) {
+pub(crate) fn source_range(dest: u32, from: u32, to: u32) -> (u32, u32) {
     let start = (u64::from(dest) * u64::from(from) / u64::from(to)) as u32;
     let end = (u64::from(dest + 1) * u64::from(from) / u64::from(to)) as u32;
     (start, end.max(start + 1).min(from))
@@ -230,6 +242,20 @@ fn average(image: &Gray, dx: u32, dy: u32, width: u32, height: u32) -> u8 {
             .sum::<u32>();
     }
     (sum / ((y1 - y0) * (x1 - x0))) as u8
+}
+
+/// Decodes a picture straight to `width` by `height`, each pixel the average of the source pixels
+/// it covers, as [`scale`] does. A PNG that is not smaller than that is decoded a row at a time
+/// (see [`crate::png_stream`]), so a big cover never needs its whole decode in memory. Anything
+/// else is decoded whole and scaled.
+pub fn decode_scaled(bytes: &[u8], width: u32, height: u32) -> Option<Gray> {
+    if is_png(bytes) {
+        let header = minipng::decode_png_header(bytes).ok()?;
+        if width <= header.width() && height <= header.height() {
+            return crate::png_stream::decode_scaled(bytes, &header, width, height);
+        }
+    }
+    scale(&decode(bytes)?, width, height)
 }
 
 /// `image` scaled to `width` by `height`, each pixel the average of the pixels it covers, as

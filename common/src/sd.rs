@@ -342,9 +342,7 @@ impl<S: Storage> BookLibrary<S> {
         let cover = self.books.get(index).and_then(|entry| {
             let book = Book::open(&self.storage, &entry.path).ok()?;
             let bytes = book.read_path(&self.storage, book.cover_path()?).ok()?;
-            let big = image::decode(&bytes)?;
-            drop(bytes);
-            image::scale(&big, width, height)
+            image::decode_scaled(&bytes, width, height)
         });
         self.covers.insert(index, cover);
     }

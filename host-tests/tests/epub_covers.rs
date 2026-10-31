@@ -294,13 +294,6 @@ fn the_real_books_show_their_covers() {
     };
     assert!(levels(0) > 3, "alice: cover has {} levels", levels(0));
     assert!(levels(1) > 3, "gulliver: cover has {} levels", levels(1));
-    // The cover of "A Journey" is an 8 bit RGB PNG of 1600 by 2400: whole, it needs 11.5 MB to
-    // decode, more than the board has, so for now the book shows its title only. This changes
-    // with item `cover-big-png`, which decodes it a row at a time.
-    // Its title is at the left of the row, over where a cover would be, so only the right part of
-    // that place is looked at.
-    let y = row(2) + 20;
-    let blank =
-        (y..y + height).all(|py| (x + width - 12..x + width).all(|px| canvas.at(px, py) == 15));
-    assert!(blank, "journey: no cover yet");
+    // The cover of "A Journey" is an 8 bit RGB PNG of 1600 by 2400, which only a row at a time fits.
+    assert!(levels(2) > 3, "journey: cover has {} levels", levels(2));
 }

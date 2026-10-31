@@ -8,6 +8,7 @@ pub mod html;
 pub mod image;
 pub mod input;
 pub mod layout;
+mod png_stream;
 pub mod reader;
 pub mod render;
 pub mod sd;

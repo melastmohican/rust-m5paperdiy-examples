@@ -1566,6 +1566,7 @@ dependencies = [
  "embedded-graphics",
  "embedded-sdmmc",
  "minipng",
+ "miniz_oxide",
  "paperpaw-platform",
  "paperpaw-xml",
  "paperpaw-zip",
