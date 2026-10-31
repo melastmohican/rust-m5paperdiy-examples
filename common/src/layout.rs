@@ -175,16 +175,15 @@ impl Layout {
     /// anchor.
     pub fn page_of_anchor(&self, id: &str) -> Option<usize> {
         let anchor = self.anchors.iter().find(|a| a.id == id)?;
-        let block = anchor.block as usize;
-        // The line of the block that holds the word, 0 for an image or a position past the end.
-        let line = match self.blocks.get(block) {
-            Some(Block::Text(text)) => text
-                .line_breaks
-                .iter()
-                .position(|&end| anchor.word < end)
-                .unwrap_or(0),
-            _ => 0,
-        };
+        let (mut block, mut line) = (anchor.block as usize, 0);
+        // The line of the block that holds the word, 0 for an image. A position after the last word
+        // of a block is the start of the next one.
+        if let Some(Block::Text(text)) = self.blocks.get(block) {
+            match text.line_breaks.iter().position(|&end| anchor.word < end) {
+                Some(found) => line = found,
+                None => block += 1,
+            }
+        }
         for (index, page) in self.pages.iter().enumerate() {
             for item in &page.items {
                 let at = match *item {

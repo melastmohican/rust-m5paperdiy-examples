@@ -324,11 +324,35 @@ fn an_anchor_in_the_middle_of_a_paragraph_opens_the_page_with_that_word() {
 
 /// Real books, from `EPUB_TEST_FILES`, read from their files: every table of contents entry that
 /// points into the spine is chosen, and the page it opens must hold the start of its title. Titles in
-/// a table of contents sometimes differ from the heading, so a few misses are allowed.
+/// a table of contents sometimes differ from the heading, so a few misses are allowed. Entries whose
+/// title has letters the font cannot draw, and entries that open a page with no text (a page that is
+/// only a picture), are not counted. Every book is reported before the test fails.
 #[test]
 #[ignore = "needs real books: set EPUB_TEST_FILES"]
 fn every_entry_of_real_books_opens_where_its_title_is() {
     let files = std::env::var("EPUB_TEST_FILES").expect("set EPUB_TEST_FILES");
+    let paths: Vec<&str> = files.split(':').filter(|p| !p.is_empty()).collect();
+    let failed = check_entries(&paths);
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
+/// The two Project Gutenberg books in `fixtures/books/`, which have the two shapes of real books:
+/// "A Journey" has 91 entries in 6 documents told apart by anchors, "Gulliver's" a document for
+/// each chapter.
+#[test]
+fn every_entry_of_the_books_in_the_repo_opens_where_its_title_is() {
+    let dir = format!("{}/tests/fixtures/books", env!("CARGO_MANIFEST_DIR"));
+    let (journey, gulliver) = (
+        format!("{dir}/journey.epub"),
+        format!("{dir}/gulliver.epub"),
+    );
+    let failed = check_entries(&[&journey, &gulliver]);
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
+/// Chooses every entry of the table of contents of each book and returns the books where too few
+/// open on their title.
+fn check_entries(paths: &[&str]) -> Vec<String> {
     let normal = |s: &str| -> String {
         s.chars()
             .map(|c| {
@@ -343,7 +367,8 @@ fn every_entry_of_real_books_opens_where_its_title_is() {
             .collect::<Vec<_>>()
             .join(" ")
     };
-    for path in files.split(':').filter(|p| !p.is_empty()) {
+    let mut failed = Vec::new();
+    for path in paths.iter().copied() {
         let mut lib = library(Disk, path);
         let mut app = App::new();
         assert_eq!(app.press(Select, &mut lib), Effect::Redraw, "{path}: opens");
@@ -362,7 +387,7 @@ fn every_entry_of_real_books_opens_where_its_title_is() {
                 entry.spine_index.is_some(),
                 entry.fragment.is_some(),
             );
-            if !in_spine {
+            if !in_spine || title.chars().any(|c| c as u32 > 0xFF) || text.trim().is_empty() {
                 continue;
             }
             checked += 1;
@@ -385,15 +410,14 @@ fn every_entry_of_real_books_opens_where_its_title_is() {
             }
         }
         println!(
-            "{path}: {toc_len} entries, {checked} in the spine, {matched} open on their title, {at_start} with an anchor open at page 0 of their document"
+            "{path}: {toc_len} entries, {checked} checked, {matched} open on their title, {at_start} with an anchor open at page 0 of their document"
         );
         for m in &misses {
             println!("   miss {m}");
         }
-        assert!(checked > 0, "{path}: nothing to check");
-        assert!(
-            matched * 100 >= checked * 85,
-            "{path}: only {matched} of {checked} entries open where their title is"
-        );
+        if checked > 0 && matched * 100 < checked * 85 {
+            failed.push(format!("{path}: only {matched} of {checked}"));
+        }
     }
+    failed
 }

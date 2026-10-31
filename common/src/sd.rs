@@ -5,6 +5,7 @@
 //! Books are found by their long name, since the 8.3 name of `Gulliver's Travels.epub` is
 //! `GULLI~40.EPU`. A file is opened by its long name, or by its short name when it has none.
 
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
@@ -18,7 +19,8 @@ use embedded_sdmmc::{
 use paperpaw_platform::storage::{DirEntry, Storage, StorageError};
 
 use crate::epub::{Book, dir_of};
-use crate::html::parse_with_anchors;
+use crate::html::{Block, parse_with_anchors};
+use crate::image;
 use crate::layout::{Draw, Layout, TextMetrics};
 use crate::reader::{Action, App, BookShape, Effect, Library, Screen};
 use crate::render::{Geometry, Serif, draw_book_list, draw_contents, draw_notice, draw_page};
@@ -181,6 +183,9 @@ struct Open {
     book: Book,
     /// Number of pages of each spine document, known once it has been laid out.
     pages: Vec<Option<usize>>,
+    /// The size of each picture looked at so far, by its path in the archive; `None` for one that is
+    /// not in the book or cannot be read.
+    sizes: BTreeMap<String, Option<(u32, u32)>>,
 }
 
 /// The books in a [`Storage`], and the one being read. The storage is the SD card on the board; the
@@ -192,6 +197,19 @@ pub struct BookLibrary<S: Storage> {
     open: Option<Open>,
     /// The last document laid out, for drawing its pages.
     layout: Option<(usize, Layout)>,
+    /// What the last page drawn did with each of its pictures, for the shell's log.
+    pictures: Vec<(String, PictureStatus)>,
+}
+
+/// What became of a picture on the page that was drawn last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PictureStatus {
+    /// Read, decoded and drawn; `bytes` is the size of the file.
+    Drawn { bytes: usize },
+    /// The book has no such file or it could not be read.
+    Unreadable,
+    /// The file was read but is not a picture that can be decoded, or is too big for the memory.
+    NotDecoded { bytes: usize },
 }
 
 /// The books on the SD card.
@@ -222,6 +240,7 @@ impl<D: BlockDevice, T: TimeSource> BookLibrary<SdStorage<D, T>> {
             geometry,
             open: None,
             layout: None,
+            pictures: Vec::new(),
         })
     }
 }
@@ -236,6 +255,7 @@ impl<S: Storage> BookLibrary<S> {
             geometry,
             open: None,
             layout: None,
+            pictures: Vec::new(),
         }
     }
 
@@ -270,14 +290,27 @@ impl<S: Storage> BookLibrary<S> {
             let data = open.book.read_spine(&self.storage, section).ok()?;
             let base = open.book.spine().get(section).map_or("", |p| dir_of(p));
             let (blocks, anchors) = parse_with_anchors(&data, base);
+            // The size of each picture, read from the book once: the layout asks for it by path.
+            for block in &blocks {
+                if let Block::Image(image) = block
+                    && !open.sizes.contains_key(&image.path)
+                {
+                    let size = open
+                        .book
+                        .read_path(&self.storage, &image.path)
+                        .ok()
+                        .and_then(|bytes| image::dimensions(&bytes));
+                    open.sizes.insert(image.path.clone(), size);
+                }
+            }
+            let sizes = &open.sizes;
             let layout = Layout::with_anchors(
                 blocks,
                 anchors,
                 &Serif,
                 self.geometry.page_width(),
                 self.geometry.page_height(),
-                // Images are not drawn yet, so they take no room.
-                &|_| None,
+                &|path| sizes.get(path).copied().flatten(),
             );
             if let Some(slot) = open.pages.get_mut(section) {
                 *slot = Some(layout.page_count());
@@ -296,6 +329,7 @@ impl<S: Storage> BookLibrary<S> {
         target: &mut G,
     ) {
         let geometry = self.geometry;
+        self.pictures.clear();
         match app.screen() {
             Screen::List => {
                 let titles: Vec<&str> = self.books.iter().map(|b| b.title.as_str()).collect();
@@ -316,8 +350,44 @@ impl<S: Storage> BookLibrary<S> {
                 draw_contents(target, &geometry, self.contents(), app.selected_toc());
             }
             Screen::Reading => {
+                let mut pictures = Vec::new();
                 if let Some(layout) = self.lay_out(app.section()) {
                     draw_page(target, &geometry, layout, app.page());
+                    layout.draw_page(app.page(), &mut |item| {
+                        if let Draw::Image {
+                            path,
+                            x,
+                            y,
+                            width,
+                            height,
+                        } = item
+                        {
+                            pictures.push((String::from(path), x, y, width, height));
+                        }
+                    });
+                }
+                // The pictures are read and decoded one at a time, so only one is in memory.
+                for (path, x, y, width, height) in pictures {
+                    let Some(open) = self.open.as_ref() else {
+                        break;
+                    };
+                    let status = match open.book.read_path(&self.storage, &path) {
+                        Err(_) => PictureStatus::Unreadable,
+                        Ok(bytes) => {
+                            let size = bytes.len();
+                            match image::decode(&bytes) {
+                                Some(gray) => {
+                                    drop(bytes);
+                                    let left = geometry.margin_left as i32 + x;
+                                    let top = geometry.margin_top as i32 + y;
+                                    image::draw(target, left, top, width, height, &gray);
+                                    PictureStatus::Drawn { bytes: size }
+                                }
+                                None => PictureStatus::NotDecoded { bytes: size },
+                            }
+                        }
+                    };
+                    self.pictures.push((path, status));
                 }
                 match effect {
                     Effect::EndOfBook => draw_notice(
@@ -350,6 +420,25 @@ impl<S: Storage> BookLibrary<S> {
             }
         });
         Some(text)
+    }
+
+    /// What the last page drawn did with each of its pictures.
+    pub fn last_pictures(&self) -> &[(String, PictureStatus)] {
+        &self.pictures
+    }
+
+    /// The paths of the pictures on the page `app` is on. For logs and tests.
+    pub fn pictures_on_page(&mut self, app: &App) -> Vec<String> {
+        let page = app.page();
+        let mut paths = Vec::new();
+        if let Some(layout) = self.lay_out(app.section()) {
+            layout.draw_page(page, &mut |item| {
+                if let Draw::Image { path, .. } = item {
+                    paths.push(String::from(path));
+                }
+            });
+        }
+        paths
     }
 
     /// The line height of the font, for the shell.
@@ -390,6 +479,7 @@ impl<S: Storage> Library for BookLibrary<S> {
         };
         self.open = Some(Open {
             pages: alloc::vec![None; shape.spine_len],
+            sizes: BTreeMap::new(),
             book,
         });
         Some(shape)

@@ -28,10 +28,12 @@
 //!   title, then `press <action>: N ms to lay out and draw, N ms to refresh` after every press.
 //! - A "Loading..." box, then the list of books, 5 to a screen, the chosen one boxed. Then the
 //!   table of contents of the book you open, 6 entries to a screen, and then its pages.
+//! - PNG and JPEG pictures in a page are drawn in 16 grays, scaled to the page; the log has a
+//!   `picture <path>: Drawn { bytes }` line for each. A page with a big picture takes about 1.3 s.
 //! - A page turn takes about a second. At the first or last page a box says so.
 //! - A card without books shows "No books on the card", one that cannot be read shows "microSD mount failed".
 //! - Differences from the Arduino reader: a serif font from `u8g2` (Times) instead of FreeSerif, no
-//!   italic, no images or covers yet, typographic quotes and dashes drawn as plain ones, and no saved
+//!   italic, typographic quotes and dashes drawn as plain ones, and no saved
 //!   position. Opening a book shows the table of contents first, as the sketch does.
 #![no_std]
 #![no_main]
@@ -214,6 +216,9 @@ fn main() -> ! {
             let started = millis();
             let effect = library.press(&mut app, action, &mut fb);
             let drawn = millis();
+            for (path, status) in library.last_pictures() {
+                info!("picture {}: {}", path.as_str(), defmt::Debug2Format(status));
+            }
             if effect != Effect::None {
                 if display.refresh(&fb, RefreshMode::M5Text).is_err() {
                     error!("refresh failed");

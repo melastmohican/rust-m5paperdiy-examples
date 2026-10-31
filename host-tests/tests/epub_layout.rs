@@ -547,3 +547,37 @@ fn every_chapter_of_real_books_lays_out_within_the_page() {
         assert!(pages > 0 && words > 0, "{path}: nothing to read");
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Anchors.
+
+fn lay_anchored(html: &str, width: u32, height: u32) -> Layout {
+    let (blocks, anchors) = m5paperdiy_common::html::parse_with_anchors(html.as_bytes(), "");
+    Layout::with_anchors(blocks, anchors, &Fake, width, height, &no_images)
+}
+
+#[test]
+fn an_anchor_after_the_last_word_of_a_paragraph_is_the_start_of_the_next_one() {
+    // 40 high: one line and the half line under it fill a page, so the second paragraph is on page 1.
+    let layout = lay_anchored(r#"<div>one two<a id="x"></a></div><p>three</p>"#, 400, 40);
+    assert_eq!(layout.page_count(), 2);
+    assert_eq!(layout.page_of_anchor("x"), Some(1));
+}
+
+#[test]
+fn an_anchor_before_the_first_word_is_on_the_page_of_that_word() {
+    let layout = lay_anchored(r#"<p>one two</p><p><a id="x"></a>three</p>"#, 400, 40);
+    assert_eq!(layout.page_of_anchor("x"), Some(1));
+}
+
+#[test]
+fn an_anchor_at_the_very_end_of_the_chapter_is_on_the_last_page() {
+    let layout = lay_anchored(r#"<p>one two</p><p>three<a id="x"></a></p>"#, 400, 40);
+    assert_eq!(layout.page_of_anchor("x"), Some(1));
+}
+
+#[test]
+fn an_anchor_that_is_not_there_has_no_page() {
+    let layout = lay_anchored(r#"<p>one two</p>"#, 400, 40);
+    assert_eq!(layout.page_of_anchor("nope"), None);
+}

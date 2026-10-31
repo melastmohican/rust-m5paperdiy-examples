@@ -5,6 +5,7 @@ extern crate alloc;
 
 pub mod epub;
 pub mod html;
+pub mod image;
 pub mod input;
 pub mod layout;
 pub mod reader;

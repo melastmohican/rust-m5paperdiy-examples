@@ -28,3 +28,8 @@ embedded-graphics = { version = "0.8.1", default-features = false }
 u8g2-fonts = { version = "0.8.0", default-features = false, features = ["embedded_graphics_textstyle"] }
 # The FAT driver, generic over the block device. The default `log` feature only adds the `log` facade.
 embedded-sdmmc = { version = "0.10.0", default-features = false }
+# Pictures in the pages. Both are `no_std` and build for the ESP32-S3. `zune-jpeg` without its default
+# features, which are only the SIMD paths of x86 and ARM and `std`.
+minipng = "1.0"
+zune-jpeg = { version = "0.5.15", default-features = false }
+zune-core = { version = "0.5.1", default-features = false }

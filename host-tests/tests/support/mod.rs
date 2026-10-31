@@ -96,10 +96,19 @@ pub fn crc32(data: &[u8]) -> u32 {
 }
 
 pub fn zip(files: &[(&str, &str)], deflated: &[&str]) -> Vec<u8> {
+    let files: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(name, content)| (*name, content.as_bytes()))
+        .collect();
+    zip_bytes(&files, deflated)
+}
+
+/// As [`zip`], for files that are not text, like pictures.
+pub fn zip_bytes(files: &[(&str, &[u8])], deflated: &[&str]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut central = Vec::new();
-    for (name, content) in files {
-        let raw = content.as_bytes();
+    for (name, raw) in files {
+        let raw = *raw;
         let (method, data) = if deflated.contains(name) {
             (8u16, miniz_oxide::deflate::compress_to_vec(raw, 6))
         } else {
