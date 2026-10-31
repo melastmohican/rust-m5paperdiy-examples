@@ -170,6 +170,26 @@ fn epub2_has_the_title_the_spine_and_the_table_of_contents() {
 }
 
 #[test]
+fn the_files_of_a_book_are_listed() {
+    let mem = storage_with("book.epub", epub2());
+    let book = Book::open(&mem, "book.epub").unwrap();
+    let mut files = book.files(&mem).unwrap();
+    files.sort();
+    assert_eq!(
+        files,
+        [
+            "META-INF/container.xml",
+            "OEBPS/ch1.xhtml",
+            "OEBPS/ch3.xhtml",
+            "OEBPS/content.opf",
+            "OEBPS/text/ch 2.xhtml",
+            "OEBPS/toc.ncx",
+            "mimetype",
+        ]
+    );
+}
+
+#[test]
 fn epub2_documents_are_read_stored_and_deflated() {
     let mem = storage_with("book.epub", epub2());
     let book = Book::open(&mem, "book.epub").unwrap();

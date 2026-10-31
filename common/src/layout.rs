@@ -9,7 +9,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::html::{Align, Block, TextBlock};
+use crate::html::{Align, Anchor, Block, TextBlock};
 
 /// What the layout needs to know about the font, in pixels.
 pub trait TextMetrics {
@@ -58,6 +58,7 @@ pub enum Draw<'a> {
 pub struct Layout {
     blocks: Vec<Block>,
     pages: Vec<Page>,
+    anchors: Vec<Anchor>,
 }
 
 impl Layout {
@@ -67,7 +68,27 @@ impl Layout {
     /// cannot be read; such an image is left out. An image larger than the page is scaled down to
     /// fit and centered.
     pub fn new(
+        blocks: Vec<Block>,
+        metrics: &dyn TextMetrics,
+        page_width: u32,
+        page_height: u32,
+        image_size: &dyn Fn(&str) -> Option<(u32, u32)>,
+    ) -> Self {
+        Self::with_anchors(
+            blocks,
+            Vec::new(),
+            metrics,
+            page_width,
+            page_height,
+            image_size,
+        )
+    }
+
+    /// As [`Layout::new`], and remembers the `anchors` of the chapter, so [`Layout::page_of_anchor`]
+    /// can say which page each one is on.
+    pub fn with_anchors(
         mut blocks: Vec<Block>,
+        anchors: Vec<Anchor>,
         metrics: &dyn TextMetrics,
         page_width: u32,
         page_height: u32,
@@ -142,7 +163,41 @@ impl Layout {
         if !page.items.is_empty() {
             pages.push(page);
         }
-        Self { blocks, pages }
+        Self {
+            blocks,
+            pages,
+            anchors,
+        }
+    }
+
+    /// The page that holds the anchor `id`: the first page that has the line the anchor is on, or
+    /// the one after it when that line is not on any page. `None` when the chapter has no such
+    /// anchor.
+    pub fn page_of_anchor(&self, id: &str) -> Option<usize> {
+        let anchor = self.anchors.iter().find(|a| a.id == id)?;
+        let block = anchor.block as usize;
+        // The line of the block that holds the word, 0 for an image or a position past the end.
+        let line = match self.blocks.get(block) {
+            Some(Block::Text(text)) => text
+                .line_breaks
+                .iter()
+                .position(|&end| anchor.word < end)
+                .unwrap_or(0),
+            _ => 0,
+        };
+        for (index, page) in self.pages.iter().enumerate() {
+            for item in &page.items {
+                let at = match *item {
+                    PageItem::Line { block, line, .. } => (block as usize, line as usize),
+                    PageItem::Image { block, .. } => (block as usize, 0),
+                };
+                if at >= (block, line) {
+                    return Some(index);
+                }
+            }
+        }
+        // Past everything on the pages: the last page.
+        self.pages.len().checked_sub(1)
     }
 
     /// Number of pages, 0 for a chapter without text or images.

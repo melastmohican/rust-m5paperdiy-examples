@@ -124,6 +124,15 @@ impl Book {
         self.read_path(storage, path)
     }
 
+    /// The path of every file in the archive, in no particular order.
+    pub fn files(&self, storage: &dyn Storage) -> Result<Vec<String>, EpubError> {
+        let mut names = Vec::new();
+        for entry in self.zip.entries(storage) {
+            names.push(entry?.name);
+        }
+        Ok(names)
+    }
+
     /// Reads any file of the archive by its path, for example an image a document refers to.
     pub fn read_path(&self, storage: &dyn Storage, path: &str) -> Result<Vec<u8>, EpubError> {
         read_file(&self.zip, storage, path)?.ok_or(EpubError::Missing("file in the archive"))

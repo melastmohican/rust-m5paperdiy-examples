@@ -18,8 +18,8 @@ use embedded_sdmmc::{
 use paperpaw_platform::storage::{DirEntry, Storage, StorageError};
 
 use crate::epub::{Book, dir_of};
-use crate::html::parse;
-use crate::layout::{Layout, TextMetrics};
+use crate::html::parse_with_anchors;
+use crate::layout::{Draw, Layout, TextMetrics};
 use crate::reader::{Action, App, BookShape, Effect, Library, Screen};
 use crate::render::{Geometry, Serif, draw_book_list, draw_contents, draw_notice, draw_page};
 
@@ -183,9 +183,10 @@ struct Open {
     pages: Vec<Option<usize>>,
 }
 
-/// The books on the card, and the one being read.
-pub struct SdLibrary<D: BlockDevice, T: TimeSource> {
-    storage: SdStorage<D, T>,
+/// The books in a [`Storage`], and the one being read. The storage is the SD card on the board; the
+/// tests use memory or files.
+pub struct BookLibrary<S: Storage> {
+    storage: S,
     books: Vec<BookEntry>,
     geometry: Geometry,
     open: Option<Open>,
@@ -193,7 +194,10 @@ pub struct SdLibrary<D: BlockDevice, T: TimeSource> {
     layout: Option<(usize, Layout)>,
 }
 
-impl<D: BlockDevice, T: TimeSource> SdLibrary<D, T> {
+/// The books on the SD card.
+pub type SdLibrary<D, T> = BookLibrary<SdStorage<D, T>>;
+
+impl<D: BlockDevice, T: TimeSource> BookLibrary<SdStorage<D, T>> {
     /// Scans the card for books and reads their titles. A book that cannot be read is left out, the
     /// others are sorted by title.
     pub fn new(storage: SdStorage<D, T>, geometry: Geometry) -> Result<Self, SdError> {
@@ -220,10 +224,12 @@ impl<D: BlockDevice, T: TimeSource> SdLibrary<D, T> {
             layout: None,
         })
     }
+}
 
+impl<S: Storage> BookLibrary<S> {
     /// A library of the given books, without scanning the card. For tests, and for a shell that
     /// already knows the books.
-    pub fn with_books(storage: SdStorage<D, T>, books: Vec<BookEntry>, geometry: Geometry) -> Self {
+    pub fn with_books(storage: S, books: Vec<BookEntry>, geometry: Geometry) -> Self {
         Self {
             storage,
             books,
@@ -236,6 +242,18 @@ impl<D: BlockDevice, T: TimeSource> SdLibrary<D, T> {
     /// The books, in the order of the list.
     pub fn books(&self) -> &[BookEntry] {
         &self.books
+    }
+
+    /// The path of every file inside book `index`, for example to see what images it has.
+    pub fn files(&self, index: usize) -> Option<Vec<String>> {
+        let entry = self.books.get(index)?;
+        let book = Book::open(&self.storage, &entry.path).ok()?;
+        book.files(&self.storage).ok()
+    }
+
+    /// The table of contents entries of the open book, with where each one points.
+    pub fn toc_entries(&self) -> &[crate::epub::TocEntry] {
+        self.open.as_ref().map_or(&[], |open| open.book.toc())
     }
 
     /// The table of contents of the open book as `(title, level)`.
@@ -251,8 +269,10 @@ impl<D: BlockDevice, T: TimeSource> SdLibrary<D, T> {
             let open = self.open.as_mut()?;
             let data = open.book.read_spine(&self.storage, section).ok()?;
             let base = open.book.spine().get(section).map_or("", |p| dir_of(p));
-            let layout = Layout::new(
-                parse(&data, base),
+            let (blocks, anchors) = parse_with_anchors(&data, base);
+            let layout = Layout::with_anchors(
+                blocks,
+                anchors,
                 &Serif,
                 self.geometry.page_width(),
                 self.geometry.page_height(),
@@ -316,6 +336,22 @@ impl<D: BlockDevice, T: TimeSource> SdLibrary<D, T> {
         }
     }
 
+    /// The words of the page `app` is on, in reading order, as one string. For logs and tests.
+    pub fn page_text(&mut self, app: &App) -> Option<String> {
+        let page = app.page();
+        let layout = self.lay_out(app.section())?;
+        let mut text = String::new();
+        layout.draw_page(page, &mut |item| {
+            if let Draw::Word { text: word, .. } = item {
+                if !text.is_empty() {
+                    text.push(' ');
+                }
+                text.push_str(word);
+            }
+        });
+        Some(text)
+    }
+
     /// The line height of the font, for the shell.
     pub fn line_height(&self) -> u32 {
         Serif.line_height()
@@ -338,7 +374,7 @@ impl<D: BlockDevice, T: TimeSource> SdLibrary<D, T> {
     }
 }
 
-impl<D: BlockDevice, T: TimeSource> Library for SdLibrary<D, T> {
+impl<S: Storage> Library for BookLibrary<S> {
     fn book_count(&self) -> usize {
         self.books.len()
     }
@@ -373,6 +409,14 @@ impl<D: BlockDevice, T: TimeSource> Library for SdLibrary<D, T> {
             slot.get_or_insert(pages);
         }
         pages
+    }
+
+    fn toc_fragment(&self, toc: usize) -> Option<String> {
+        self.open.as_ref()?.book.toc().get(toc)?.fragment.clone()
+    }
+
+    fn page_of_anchor(&mut self, section: usize, fragment: &str) -> Option<usize> {
+        self.lay_out(section)?.page_of_anchor(fragment)
     }
 
     fn close(&mut self) {

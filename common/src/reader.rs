@@ -11,6 +11,8 @@
 //! stops at the first and the last page and says so, where the Arduino reader ran past the end of
 //! the book and showed a notice.
 
+use alloc::string::String;
+
 /// What a button press means.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -68,6 +70,18 @@ pub trait Library {
     /// Number of pages of spine document `section`, laying it out when that has not been done. A
     /// document that cannot be read has none.
     fn pages_in_section(&mut self, section: usize) -> usize;
+    /// The part after `#` of the link of table of contents entry `toc`, when it has one. Many books
+    /// put all their chapters in one document and tell them apart by this.
+    fn toc_fragment(&self, toc: usize) -> Option<String> {
+        let _ = toc;
+        None
+    }
+    /// The page of spine document `section` that holds the anchor `fragment`, `None` when the
+    /// document has no such anchor.
+    fn page_of_anchor(&mut self, section: usize, fragment: &str) -> Option<usize> {
+        let _ = (section, fragment);
+        None
+    }
     /// Lets go of the open book.
     fn close(&mut self);
 }
@@ -183,7 +197,11 @@ impl App {
                     .toc_spine_index(self.toc)
                     .filter(|&section| section < self.shape.spine_len)
                     .unwrap_or(0);
-                self.page = 0;
+                // Start on the page that holds the chapter, not on the first page of its document.
+                self.page = library
+                    .toc_fragment(self.toc)
+                    .and_then(|fragment| library.page_of_anchor(self.section, &fragment))
+                    .unwrap_or(0);
                 self.screen = Screen::Reading;
                 Effect::Redraw
             }

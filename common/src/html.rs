@@ -101,6 +101,16 @@ pub struct ImageBlock {
     pub(crate) x: u32,
 }
 
+/// A place in a chapter that a link can point at: an element with an `id`, or an `a` with a `name`.
+/// It is at word `word` of block `block`, counting the blocks of [`parse_with_anchors`]; a position
+/// past the last word of a block means the start of the next one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Anchor {
+    pub id: String,
+    pub block: u32,
+    pub word: u32,
+}
+
 /// A piece of a chapter.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
@@ -122,6 +132,8 @@ struct Parser<'a> {
     base_dir: &'a str,
     /// The blocks that are finished.
     blocks: Vec<Block>,
+    /// The places links can point at.
+    anchors: Vec<Anchor>,
     /// The text block words are added to.
     open: TextBlock,
     /// Open `b`, `strong` and heading elements, so nested ones do not switch bold off early.
@@ -142,7 +154,23 @@ impl Parser<'_> {
         }
     }
 
-    fn start(&mut self, name: &str, src: Option<String>, self_closing: bool) {
+    /// Remembers an anchor at the current position. The first one with an id counts.
+    fn anchor(&mut self, id: Option<String>) {
+        let Some(id) = id.filter(|id| !id.is_empty()) else {
+            return;
+        };
+        if self.anchors.iter().any(|a| a.id == id) {
+            return;
+        }
+        self.anchors.push(Anchor {
+            id,
+            block: self.blocks.len() as u32,
+            word: self.open.words.len() as u32,
+        });
+    }
+
+    fn start(&mut self, name: &str, src: Option<String>, id: Option<String>, self_closing: bool) {
+        let mut id = id;
         let name = local_name(name);
         if matches!(name, "head" | "script" | "style" | "table") {
             if !self_closing {
@@ -156,6 +184,8 @@ impl Parser<'_> {
                 // same alignment.
                 let align = self.open.align;
                 self.start_block(align);
+                // An image is its own block, so the anchor is at the image.
+                self.anchor(id.take());
                 self.blocks.push(Block::Image(ImageBlock {
                     path: resolve_path(self.base_dir, &src),
                     width: 0,
@@ -183,6 +213,8 @@ impl Parser<'_> {
                 self.italic += 1;
             }
         }
+        // After the element's own block was started, so the anchor is at the start of that block.
+        self.anchor(id);
     }
 
     fn end(&mut self, name: &str) {
@@ -204,9 +236,15 @@ impl Parser<'_> {
 /// Reads a chapter. `base_dir` is the directory of the chapter inside the archive, with a trailing
 /// `/` (see [`crate::epub::dir_of`]), so image paths resolve against it.
 pub fn parse(xhtml: &[u8], base_dir: &str) -> Vec<Block> {
+    parse_with_anchors(xhtml, base_dir).0
+}
+
+/// As [`parse`], and the anchors of the chapter too.
+pub fn parse_with_anchors(xhtml: &[u8], base_dir: &str) -> (Vec<Block>, Vec<Anchor>) {
     let mut parser = Parser {
         base_dir,
         blocks: Vec::new(),
+        anchors: Vec::new(),
         open: TextBlock::new(Align::Justified),
         bold: 0,
         italic: 0,
@@ -225,7 +263,17 @@ pub fn parse(xhtml: &[u8], base_dir: &str) -> Vec<Block> {
                 return;
             }
             let src = attrs.get("src").map(|s| decode(&s).into_owned());
-            parser.start(name, src, self_closing);
+            // `id`, or the older `<a name="...">`.
+            let id = attrs
+                .get("id")
+                .or_else(|| {
+                    local_name(name)
+                        .eq_ignore_ascii_case("a")
+                        .then(|| attrs.get("name"))
+                        .flatten()
+                })
+                .map(|s| decode(&s).into_owned());
+            parser.start(name, src, id, self_closing);
         }
         Token::End { .. } if parser.skip > 0 => parser.skip -= 1,
         Token::End { name } => parser.end(name),
@@ -240,5 +288,5 @@ pub fn parse(xhtml: &[u8], base_dir: &str) -> Vec<Block> {
         let last = core::mem::replace(&mut parser.open, TextBlock::new(Align::Justified));
         parser.blocks.push(Block::Text(last));
     }
-    parser.blocks
+    (parser.blocks, parser.anchors)
 }
