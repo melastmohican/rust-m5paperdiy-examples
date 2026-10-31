@@ -129,7 +129,68 @@ fn epub3() -> Vec<u8> {
     )
 }
 
+/// EPUB 2 with the cover named by `<meta name="cover">` (given as `meta`, empty for none), the
+/// picture in `OEBPS/images/` and the package in a folder, so the path must be resolved.
+fn with_cover(meta: &str, manifest_id: &str) -> Vec<u8> {
+    let opf = format!(
+        r#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Covered</dc:title>{meta}</metadata>
+  <manifest>
+    <item id="{manifest_id}" href="images/front%20cover.png" media-type="image/png"/>
+    <item id="c1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="c1"/></spine>
+</package>"#
+    );
+    zip(
+        &[
+            ("META-INF/container.xml", CONTAINER),
+            ("OEBPS/content.opf", &opf),
+            ("OEBPS/ch1.xhtml", "<p>one</p>"),
+            ("OEBPS/images/front cover.png", "not really a png"),
+        ],
+        &[],
+    )
+}
+
+fn cover_of(archive: Vec<u8>) -> Option<String> {
+    let mem = storage_with("book.epub", archive);
+    let book = Book::open(&mem, "book.epub").unwrap();
+    book.cover_path().map(str::to_string)
+}
+
 // ---------------------------------------------------------------------------------------------
+
+#[test]
+fn the_cover_is_the_manifest_item_the_cover_meta_names() {
+    let meta = r#"<meta name="cover" content="cover-image"/>"#;
+    // Resolved against the folder of the package, with the percent escape decoded.
+    assert_eq!(
+        cover_of(with_cover(meta, "cover-image")).as_deref(),
+        Some("OEBPS/images/front cover.png")
+    );
+    // Other metas first, and the attributes the other way round.
+    let meta = r#"<meta name="generator" content="x"/><meta content="cover-image" name="cover"/>"#;
+    assert_eq!(
+        cover_of(with_cover(meta, "cover-image")).as_deref(),
+        Some("OEBPS/images/front cover.png")
+    );
+}
+
+#[test]
+fn a_book_without_a_usable_cover_meta_has_no_cover() {
+    assert_eq!(cover_of(with_cover("", "cover-image")), None);
+    // Named, but not in the manifest.
+    let meta = r#"<meta name="cover" content="missing"/>"#;
+    assert_eq!(cover_of(with_cover(meta, "cover-image")), None);
+    // A meta that is not the cover one.
+    let meta = r#"<meta name="cover-note" content="cover-image"/>"#;
+    assert_eq!(cover_of(with_cover(meta, "cover-image")), None);
+    // The books without one above.
+    assert_eq!(cover_of(epub2()), None);
+    assert_eq!(cover_of(epub3()), None);
+}
 
 #[test]
 fn epub2_has_the_title_the_spine_and_the_table_of_contents() {
@@ -348,6 +409,26 @@ fn paths_follow_dots_and_percent_escapes() {
     assert_eq!(percent_decode("%C3%A9t%C3%A9"), "été");
     assert_eq!(percent_decode("100%"), "100%");
     assert_eq!(percent_decode("%zz%4"), "%zz%4");
+}
+
+#[test]
+fn the_books_in_the_repository_have_a_cover_that_decodes() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/books");
+    for name in ["journey.epub", "gulliver.epub"] {
+        let mem = storage_with(
+            name,
+            std::fs::read(format!("{dir}/{name}")).expect("fixture book"),
+        );
+        let book = Book::open(&mem, name).unwrap();
+        let path = book
+            .cover_path()
+            .unwrap_or_else(|| panic!("{name}: no cover"));
+        let bytes = book.read_path(&mem, path).unwrap();
+        let (width, height) = m5paperdiy_common::image::dimensions(&bytes)
+            .unwrap_or_else(|| panic!("{name}: {path} is not a picture"));
+        println!("{name}: {path}, {} bytes, {width} x {height}", bytes.len());
+        assert!(width > 0 && height > width, "{name}: not a portrait cover");
+    }
 }
 
 /// Real books, read from the paths in `EPUB_TEST_FILES` (separated by `:`). They are not in the

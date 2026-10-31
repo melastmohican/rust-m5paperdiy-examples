@@ -71,6 +71,7 @@ pub struct Book {
     title: String,
     spine: Vec<String>,
     toc: Vec<TocEntry>,
+    cover: Option<String>,
     zip: ZipArchive,
 }
 
@@ -95,10 +96,17 @@ impl Book {
             .collect();
 
         let toc = read_toc(&zip, storage, base, &opf, &spine)?;
+        // The cover is the manifest item `<meta name="cover" content="id"/>` names, as in the Arduino reader.
+        let cover = opf
+            .cover_id
+            .as_ref()
+            .and_then(|id| opf.manifest.get(id))
+            .map(|item| resolve_path(base, &item.href));
         Ok(Self {
             title: opf.title,
             spine,
             toc,
+            cover,
             zip,
         })
     }
@@ -116,6 +124,12 @@ impl Book {
     /// The table of contents, in reading order, empty when the book has none.
     pub fn toc(&self) -> &[TocEntry] {
         &self.toc
+    }
+
+    /// The path inside the archive of the cover picture, when the package names one that its
+    /// manifest lists.
+    pub fn cover_path(&self) -> Option<&str> {
+        self.cover.as_deref()
     }
 
     /// Reads spine document `index`.
@@ -234,6 +248,8 @@ struct Package {
     spine: Vec<String>,
     /// The `toc` attribute of the spine: the manifest id of the NCX.
     ncx_id: Option<String>,
+    /// The `content` of `<meta name="cover">`: the manifest id of the cover picture.
+    cover_id: Option<String>,
 }
 
 fn parse_package(data: &[u8]) -> Package {
@@ -257,6 +273,12 @@ fn parse_package(data: &[u8]) -> Package {
                         properties: get("properties"),
                     },
                 );
+            }
+            "meta"
+                if opf.cover_id.is_none()
+                    && attrs.get("name").is_some_and(|n| decode(&n) == "cover") =>
+            {
+                opf.cover_id = attrs.get("content").map(|id| decode(&id).into_owned());
             }
             "spine" => opf.ncx_id = attrs.get("toc").map(|id| decode(&id).into_owned()),
             "itemref" => {
