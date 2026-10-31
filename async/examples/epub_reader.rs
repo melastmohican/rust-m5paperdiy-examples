@@ -22,6 +22,7 @@
 //! | A click | down: next book, entry or page |
 //! | A hold (about 0.6 s) | up: previous book, entry or page |
 //! | B click | select: open the book or chapter, or go back to the list |
+//! | B hold (about 0.6 s) | skip: the first item of the next screen of the list or the contents, ten pages ahead on a page |
 //!
 //! ## Expected
 //!
@@ -86,6 +87,7 @@ fn action_name(action: Action) -> &'static str {
         Action::Up => "up",
         Action::Down => "down",
         Action::Select => "select",
+        Action::Skip => "skip",
     }
 }
 

@@ -3,7 +3,7 @@
 
 use m5paperdiy_common::reader::{Action, App, BookShape, Effect, Library, Screen, items_on_page};
 
-use Action::{Down, Select, Up};
+use Action::{Down, Select, Skip, Up};
 
 /// A book for the tests: where each table of contents entry points, and the pages of each document.
 #[derive(Clone)]
@@ -484,4 +484,105 @@ fn a_real_book_is_read_from_the_list_to_the_last_page_and_back() {
         assert_eq!(app.press(Select, &mut lib), Effect::Redraw);
         assert_eq!(app.screen(), Screen::List, "{name}: back to the list");
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Skip: forward a screen.
+
+fn many_books(count: usize) -> Fake {
+    Fake::with((0..count).map(|_| book(&[Some(0)], &[1])).collect())
+}
+
+/// A book with `entries` entries, all in its one document, and `pages` for each of its `docs`.
+fn long_book(entries: usize, pages: &[usize]) -> Fake {
+    Fake::with(vec![book(&vec![Some(0); entries], pages)])
+}
+
+#[test]
+fn skip_on_the_list_moves_to_the_first_book_of_the_next_screen() {
+    let mut lib = many_books(12);
+    let mut app = App::new();
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        assert_eq!(app.press(Skip, &mut lib), Effect::Redraw);
+        seen.push(app.selected_book());
+    }
+    // 5 books to a screen, so 0, 5, 10, and round to the first screen.
+    assert_eq!(seen, [5, 10, 0, 5]);
+    press(&mut app, &mut lib, &[Down, Down]);
+    assert_eq!(app.selected_book(), 7);
+    app.press(Skip, &mut lib);
+    assert_eq!(app.selected_book(), 10, "from the middle of a screen too");
+}
+
+#[test]
+fn skip_on_a_list_of_one_screen_stays_on_it() {
+    let mut lib = three_books();
+    let mut app = App::new();
+    press(&mut app, &mut lib, &[Down]);
+    assert_eq!(app.press(Skip, &mut lib), Effect::Redraw);
+    assert_eq!(app.selected_book(), 0, "the next screen is the first again");
+}
+
+#[test]
+fn skip_on_an_empty_list_does_nothing() {
+    let mut lib = many_books(0);
+    let mut app = App::new();
+    assert_eq!(app.press(Skip, &mut lib), Effect::None);
+}
+
+#[test]
+fn skip_in_the_contents_moves_to_the_first_entry_of_the_next_screen() {
+    let mut lib = long_book(40, &[5]);
+    let mut app = App::new();
+    app.press(Select, &mut lib);
+    assert_eq!(app.screen(), Screen::Contents);
+    let mut seen = Vec::new();
+    for _ in 0..8 {
+        assert_eq!(app.press(Skip, &mut lib), Effect::Redraw);
+        seen.push(app.selected_toc());
+    }
+    // 6 entries to a screen, 40 entries: 7 screens, then round.
+    assert_eq!(seen, [6, 12, 18, 24, 30, 36, 0, 6]);
+}
+
+#[test]
+fn four_skips_and_three_clicks_reach_the_28th_entry() {
+    let mut lib = long_book(49, &[5]);
+    let mut app = App::new();
+    app.press(Select, &mut lib);
+    press(
+        &mut app,
+        &mut lib,
+        &[Skip, Skip, Skip, Skip, Down, Down, Down],
+    );
+    assert_eq!(app.selected_toc(), 27);
+}
+
+#[test]
+fn skip_while_reading_moves_ten_pages() {
+    let mut lib = long_book(1, &[30]);
+    let mut app = App::new();
+    press(&mut app, &mut lib, &[Select, Select]);
+    assert_eq!(at(&app), (Screen::Reading, 0, 0));
+    assert_eq!(app.press(Skip, &mut lib), Effect::Redraw);
+    assert_eq!(at(&app), (Screen::Reading, 0, 10));
+    app.press(Skip, &mut lib);
+    assert_eq!(at(&app), (Screen::Reading, 0, 20));
+    // 9 pages are left: it goes to the last page, and the next skip says the book is over.
+    assert_eq!(app.press(Skip, &mut lib), Effect::Redraw);
+    assert_eq!(at(&app), (Screen::Reading, 0, 29));
+    assert_eq!(app.press(Skip, &mut lib), Effect::EndOfBook);
+    assert_eq!(at(&app), (Screen::Reading, 0, 29));
+}
+
+#[test]
+fn skip_while_reading_crosses_documents_and_passes_empty_ones() {
+    let mut lib = long_book(1, &[4, 0, 4, 4]);
+    let mut app = App::new();
+    press(&mut app, &mut lib, &[Select, Select]);
+    assert_eq!(app.press(Skip, &mut lib), Effect::Redraw);
+    // From (0, 0): 3 pages to the end of document 0, then document 2 (1 has none) page 0 to 3, then
+    // document 3 page 0 to 2: ten steps.
+    assert_eq!(at(&app), (Screen::Reading, 3, 2));
 }

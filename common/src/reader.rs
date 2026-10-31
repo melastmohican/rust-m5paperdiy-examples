@@ -13,6 +13,8 @@
 
 use alloc::string::String;
 
+use crate::render::{BOOKS_PER_SCREEN, ENTRIES_PER_SCREEN};
+
 /// What a button press means.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -22,7 +24,13 @@ pub enum Action {
     Down,
     /// Open the book or chapter, or go back to the list.
     Select,
+    /// Forward a screen: to the first item of the next screen of the list or of the contents, round
+    /// to the first screen after the last, and [`SKIP_PAGES`] pages ahead while reading.
+    Skip,
 }
+
+/// How many pages [`Action::Skip`] moves while reading.
+pub const SKIP_PAGES: usize = 10;
 
 /// The screens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,6 +175,10 @@ impl App {
                 self.book = step(self.book, count, action);
                 Effect::Redraw
             }
+            Action::Skip => {
+                self.book = next_screen(self.book, BOOKS_PER_SCREEN, count);
+                Effect::Redraw
+            }
             Action::Select => {
                 let Some(shape) = library.open(self.book) else {
                     return Effect::OpenFailed;
@@ -190,6 +202,10 @@ impl App {
         match action {
             Action::Up | Action::Down => {
                 self.toc = step(self.toc, self.shape.toc_len, action);
+                Effect::Redraw
+            }
+            Action::Skip => {
+                self.toc = next_screen(self.toc, ENTRIES_PER_SCREEN, self.shape.toc_len);
                 Effect::Redraw
             }
             Action::Select => {
@@ -230,6 +246,22 @@ impl App {
                 }
                 Effect::EndOfBook
             }
+            Action::Skip => {
+                // Ten pages on, as far as there are. Moving at all is a redraw; with no page left it
+                // is the end of the book.
+                let mut moved = false;
+                for _ in 0..SKIP_PAGES {
+                    if self.press_reading(Action::Down, library) != Effect::Redraw {
+                        break;
+                    }
+                    moved = true;
+                }
+                if moved {
+                    Effect::Redraw
+                } else {
+                    Effect::EndOfBook
+                }
+            }
             Action::Up => {
                 if self.page > 0 {
                     self.page -= 1;
@@ -259,6 +291,13 @@ fn step(index: usize, count: usize, action: Action) -> usize {
         Action::Down => (index + 1) % count,
         _ => (index + count - 1) % count,
     }
+}
+
+/// The first item of the screen after the one that holds `selected`, for `count` items shown
+/// `per_page` to a screen, or the first item of all after the last screen.
+fn next_screen(selected: usize, per_page: usize, count: usize) -> usize {
+    let next = (selected / per_page + 1) * per_page;
+    if next < count { next } else { 0 }
 }
 
 /// The indexes of the items on the screen that shows item `selected`, for a list of `count` items

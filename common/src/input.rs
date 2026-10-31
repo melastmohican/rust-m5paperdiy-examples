@@ -1,16 +1,16 @@
-//! The two buttons as the three actions of the reader. The shell reads whether each button is down
+//! The two buttons as the four actions of the reader. The shell reads whether each button is down
 //! every few milliseconds and calls [`Buttons::update`] with the time; nothing here touches the
 //! hardware, so the host tests drive it with a made-up clock.
 //!
 //! Button A is [`Action::Down`] on a click and [`Action::Up`] on a hold, like the Arduino sketch's
-//! `wasClicked` and `wasHold`; button B is [`Action::Select`] on a click. A press shorter than
-//! [`MIN_PRESS_MS`] is a bounce and is ignored. A hold fires once, as soon as it is long enough,
-//! and the release that follows does nothing. While both buttons are down nothing fires, and
+//! `wasClicked` and `wasHold`; button B is [`Action::Select`] on a click and [`Action::Skip`] on a
+//! hold. A press shorter than [`MIN_PRESS_MS`] is a bounce and is ignored. A hold fires once, as
+//! soon as it is long enough, and the release that follows does nothing. While both buttons are down nothing fires, and
 //! nothing does until both are up again, so pressing the two together by accident does no harm.
 
 use crate::reader::Action;
 
-/// How long button A must stay down to count as a hold, in milliseconds.
+/// How long a button must stay down to count as a hold, in milliseconds.
 pub const HOLD_MS: u64 = 600;
 /// Shorter presses are contact bounce.
 pub const MIN_PRESS_MS: u64 = 40;
@@ -82,22 +82,29 @@ impl Buttons {
             (None, false) => {}
         }
 
-        // Button B: a click when it comes up.
-        match (&self.b, b_down) {
+        // Button B: a hold fires while it is down, a click when it comes up.
+        match (&mut self.b, b_down) {
             (None, true) => {
                 self.b = Some(Down {
                     since: now_ms,
                     fired: false,
                 })
             }
+            (Some(b), true) => {
+                if !b.fired && now_ms.saturating_sub(b.since) >= HOLD_MS {
+                    b.fired = true;
+                    return Some(Action::Skip);
+                }
+            }
             (Some(_), false) => {
                 if let Some(b) = self.b.take()
+                    && !b.fired
                     && now_ms.saturating_sub(b.since) >= MIN_PRESS_MS
                 {
                     return Some(Action::Select);
                 }
             }
-            _ => {}
+            (None, false) => {}
         }
         None
     }

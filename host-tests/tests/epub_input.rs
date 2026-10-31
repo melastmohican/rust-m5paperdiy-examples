@@ -1,8 +1,8 @@
-//! Tests of `common/src/input.rs`: the two buttons as the three actions of the reader, with a made-up
+//! Tests of `common/src/input.rs`: the two buttons as the four actions of the reader, with a made-up
 //! clock polled every 20 ms like the board does.
 
 use m5paperdiy_common::input::{Buttons, HOLD_MS, MIN_PRESS_MS};
-use m5paperdiy_common::reader::Action::{self, Down, Select, Up};
+use m5paperdiy_common::reader::Action::{self, Down, Select, Skip, Up};
 
 /// What the buttons do over time: `(from_ms, a_down, b_down)`, each state lasting until the next entry.
 /// Returns every action with the time it happened.
@@ -210,4 +210,59 @@ fn a_release_and_a_press_of_the_other_button_in_one_poll_lose_nothing() {
         1000,
     );
     assert_eq!(actions(&events), [Down]);
+}
+
+#[test]
+fn a_hold_of_b_is_skip_once_as_soon_as_it_is_long_enough() {
+    let events = run(
+        (false, false),
+        &[(100, false, true), (5000, false, false)],
+        6000,
+    );
+    assert_eq!(
+        actions(&events),
+        [Skip],
+        "one hold, one action, and the release adds no select"
+    );
+    let at = events[0].0;
+    assert!(
+        (100 + HOLD_MS..100 + HOLD_MS + 40).contains(&at),
+        "fired at {at}, the hold is {HOLD_MS}"
+    );
+}
+
+#[test]
+fn a_press_of_b_just_under_the_hold_is_a_select() {
+    let events = run(
+        (false, false),
+        &[(100, false, true), (100 + HOLD_MS - 40, false, false)],
+        2000,
+    );
+    assert_eq!(actions(&events), [Select]);
+}
+
+#[test]
+fn a_hold_of_b_then_a_click_of_a_are_two_actions() {
+    let events = run(
+        (false, false),
+        &[
+            (100, false, true),
+            (1000, false, false),
+            (1200, true, false),
+            (1300, false, false),
+        ],
+        2000,
+    );
+    assert_eq!(actions(&events), [Skip, Down]);
+}
+
+#[test]
+fn a_hold_of_b_that_a_joins_does_nothing() {
+    // A goes down while B is held but before the hold is long enough: both together, ignored.
+    let events = run(
+        (false, false),
+        &[(100, false, true), (400, true, true), (3000, false, false)],
+        4000,
+    );
+    assert_eq!(actions(&events), []);
 }
