@@ -414,7 +414,7 @@ fn paths_follow_dots_and_percent_escapes() {
 #[test]
 fn the_books_in_the_repository_have_a_cover_that_decodes() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/books");
-    for name in ["journey.epub", "gulliver.epub"] {
+    for name in ["journey.epub", "gulliver.epub", "alice.epub"] {
         let mem = storage_with(
             name,
             std::fs::read(format!("{dir}/{name}")).expect("fixture book"),

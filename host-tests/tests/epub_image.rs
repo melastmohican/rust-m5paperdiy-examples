@@ -240,3 +240,34 @@ fn drawing_partly_off_the_target_or_nothing_does_not_panic() {
     );
     assert_eq!(canvas.at(0, 0), 0);
 }
+
+#[test]
+fn scale_averages_the_pixels_each_result_pixel_covers() {
+    use m5paperdiy_common::image::{Gray, scale};
+    // 4 by 2: two columns of 0 and 100, then two of 200 and 40.
+    let image = Gray {
+        width: 4,
+        height: 2,
+        pixels: vec![0, 100, 200, 40, 100, 0, 40, 200],
+    };
+    let half = scale(&image, 2, 1).unwrap();
+    assert_eq!((half.width, half.height), (2, 1));
+    assert_eq!(half.pixels, vec![50, 120]);
+    // The same size is the same picture, and a bigger one repeats pixels.
+    assert_eq!(scale(&image, 4, 2).unwrap(), image);
+    assert_eq!(scale(&image, 8, 2).unwrap().pixels[..4], [0, 0, 100, 100]);
+    // Nothing to scale to, or from.
+    assert!(scale(&image, 0, 2).is_none());
+    assert!(
+        scale(
+            &Gray {
+                width: 4,
+                height: 2,
+                pixels: vec![0; 3]
+            },
+            2,
+            2
+        )
+        .is_none()
+    );
+}

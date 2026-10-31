@@ -6,10 +6,11 @@ mod support;
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use m5paperdiy_common::html::parse;
+use m5paperdiy_common::image::Gray;
 use m5paperdiy_common::layout::{Layout, TextMetrics};
 use m5paperdiy_common::render::{
-    BOOKS_PER_SCREEN, ENTRIES_PER_SCREEN, Geometry, Serif, draw_book_list, draw_contents,
-    draw_notice, draw_page, glyph_text,
+    BOOKS_PER_SCREEN, ENTRIES_PER_SCREEN, Geometry, Serif, cover_size, draw_book_list,
+    draw_contents, draw_notice, draw_page, glyph_text,
 };
 
 const G: Geometry = Geometry::PORTRAIT;
@@ -36,9 +37,18 @@ impl Canvas {
 
     /// The smallest box that holds every dark pixel inside `rows`, as `(left, top, right, bottom)`.
     fn ink(&self, rows: std::ops::Range<i32>) -> Option<(i32, i32, i32, i32)> {
+        self.ink_in(rows, 0..self.width as i32)
+    }
+
+    /// As [`Canvas::ink`], looking only at the columns `cols`.
+    fn ink_in(
+        &self,
+        rows: std::ops::Range<i32>,
+        cols: std::ops::Range<i32>,
+    ) -> Option<(i32, i32, i32, i32)> {
         let mut found: Option<(i32, i32, i32, i32)> = None;
         for y in rows {
-            for x in 0..self.width as i32 {
+            for x in cols.clone() {
                 if self.at(x, y) < 8 {
                     let b = found.get_or_insert((x, y, x, y));
                     b.0 = b.0.min(x);
@@ -218,7 +228,7 @@ fn cell_top(slot: usize, per_screen: usize) -> i32 {
 #[test]
 fn the_book_list_boxes_the_chosen_book_and_shows_five_to_a_screen() {
     let titles = titles();
-    let refs: Vec<&str> = titles.iter().map(String::as_str).collect();
+    let refs: Vec<(&str, Option<&Gray>)> = titles.iter().map(|t| (t.as_str(), None)).collect();
     let cell = (G.page_height() / BOOKS_PER_SCREEN as u32) as i32;
 
     // The first screen with book 1 chosen.
@@ -409,4 +419,77 @@ fn pages_of_real_books_are_drawn() {
             }
         }
     }
+}
+
+/// A cover of one gray, already the size the list wants.
+fn cover(value: u8) -> Gray {
+    let (width, height) = cover_size(&G);
+    Gray {
+        width,
+        height,
+        pixels: vec![value; (width * height) as usize],
+    }
+}
+
+#[test]
+fn a_cover_sits_left_of_its_title_at_the_place_the_arduino_list_puts_it() {
+    // The sketch: cell = page height / 5, cover at (20, row + 20), height cell - 40, width 2/3 of it.
+    let (width, height) = cover_size(&G);
+    let cell = G.page_height() / BOOKS_PER_SCREEN as u32;
+    assert_eq!((width, height), (2 * (cell - 40) / 3, cell - 40));
+
+    let black = cover(0);
+    let books = [
+        ("Has a cover", Some(&black)),
+        ("Has none", None),
+        (
+            "Also has a cover, and a title long enough to wrap onto more lines",
+            Some(&black),
+        ),
+    ];
+    let mut canvas = Canvas::white();
+    draw_book_list(&mut canvas, &G, &books, 0);
+    canvas.dump("list_covers");
+
+    let (x, y) = (G.margin_left as i32 + 20, cell_top(0, 5) + 20);
+    // All four corners of the cover are black, and the pixels just outside are white.
+    for (cx, cy) in [
+        (x, y),
+        (x + width as i32 - 1, y),
+        (x, y + height as i32 - 1),
+        (x + width as i32 - 1, y + height as i32 - 1),
+    ] {
+        assert_eq!(canvas.at(cx, cy), 0, "cover corner ({cx}, {cy})");
+    }
+    assert_eq!(canvas.at(x - 1, y + 5), 15, "left of the cover");
+    assert_eq!(canvas.at(x + width as i32, y + 5), 15, "right of the cover");
+    assert_eq!(canvas.at(x + 5, y - 1), 15, "above the cover");
+    assert_eq!(canvas.at(x + 5, y + height as i32), 15, "below the cover");
+
+    // The title of a book with a cover starts 20 px right of it and stays inside the row. The
+    // columns stop before the box round the chosen book.
+    let title_x = x + width as i32 + 20;
+    let columns = title_x - 10..(G.width - G.margin_right) as i32 - 15;
+    let inside = |slot: usize| cell_top(slot, 5) + 22..cell_top(slot + 1, 5) - 22;
+    let (left, _, right, _) = canvas.ink_in(inside(0), columns.clone()).unwrap();
+    assert!(
+        left >= title_x - 1,
+        "title starts at {left}, wanted {title_x}"
+    );
+    assert!(
+        right < (G.width - G.margin_right) as i32 - 20,
+        "title ends at {right}"
+    );
+
+    // A book without one is as it was: the title at the left of the row.
+    let (left, ..) = canvas.ink_in(inside(1), 0..G.width as i32 - 30).unwrap();
+    assert_eq!(
+        left,
+        G.margin_left as i32 + 10 + 1,
+        "title without a cover starts at {left}"
+    );
+
+    // The title that wraps keeps inside the width it was given.
+    let (left, _, right, _) = canvas.ink_in(inside(2), columns).unwrap();
+    assert!(left >= title_x - 1 && right < (G.width - G.margin_right) as i32 - 20);
 }

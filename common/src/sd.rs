@@ -20,10 +20,13 @@ use paperpaw_platform::storage::{DirEntry, Storage, StorageError};
 
 use crate::epub::{Book, dir_of};
 use crate::html::{Block, parse_with_anchors};
-use crate::image;
+use crate::image::{self, Gray};
 use crate::layout::{Draw, Layout, TextMetrics};
-use crate::reader::{Action, App, BookShape, Effect, Library, Screen};
-use crate::render::{Geometry, Serif, draw_book_list, draw_contents, draw_notice, draw_page};
+use crate::reader::{Action, App, BookShape, Effect, Library, Screen, items_on_page};
+use crate::render::{
+    BOOKS_PER_SCREEN, Geometry, Serif, cover_size, draw_book_list, draw_contents, draw_notice,
+    draw_page,
+};
 
 /// The most books listed, as in the Arduino reader.
 pub const MAX_BOOKS: usize = 20;
@@ -199,6 +202,9 @@ pub struct BookLibrary<S: Storage> {
     layout: Option<(usize, Layout)>,
     /// What the last page drawn did with each of its pictures, for the shell's log.
     pictures: Vec<(String, PictureStatus)>,
+    /// The covers of the books of the list, scaled for it, by index in `books`. `None` is a book
+    /// whose cover was looked for and not found or not decoded, so it is not looked for again.
+    covers: BTreeMap<usize, Option<Gray>>,
 }
 
 /// What became of a picture on the page that was drawn last.
@@ -241,6 +247,7 @@ impl<D: BlockDevice, T: TimeSource> BookLibrary<SdStorage<D, T>> {
             open: None,
             layout: None,
             pictures: Vec::new(),
+            covers: BTreeMap::new(),
         })
     }
 }
@@ -256,7 +263,13 @@ impl<S: Storage> BookLibrary<S> {
             open: None,
             layout: None,
             pictures: Vec::new(),
+            covers: BTreeMap::new(),
         }
+    }
+
+    /// The storage the books are read from.
+    pub fn storage(&self) -> &S {
+        &self.storage
     }
 
     /// The books, in the order of the list.
@@ -320,6 +333,22 @@ impl<S: Storage> BookLibrary<S> {
         self.layout.as_ref().map(|(_, layout)| layout)
     }
 
+    /// Reads, decodes and scales the cover of book `index` for the list, unless that was done.
+    fn load_cover(&mut self, index: usize) {
+        if self.covers.contains_key(&index) {
+            return;
+        }
+        let (width, height) = cover_size(&self.geometry);
+        let cover = self.books.get(index).and_then(|entry| {
+            let book = Book::open(&self.storage, &entry.path).ok()?;
+            let bytes = book.read_path(&self.storage, book.cover_path()?).ok()?;
+            let big = image::decode(&bytes)?;
+            drop(bytes);
+            image::scale(&big, width, height)
+        });
+        self.covers.insert(index, cover);
+    }
+
     /// Draws the screen `app` is on into `target`, which is cleared first by the caller. `effect` is
     /// what the last press did, so a notice can be drawn on top of the page.
     pub fn draw<G: DrawTarget<Color = Gray4>>(
@@ -332,15 +361,31 @@ impl<S: Storage> BookLibrary<S> {
         self.pictures.clear();
         match app.screen() {
             Screen::List => {
-                let titles: Vec<&str> = self.books.iter().map(|b| b.title.as_str()).collect();
-                if titles.is_empty() {
+                // Only the books on the screen are looked at, the others when the box gets there.
+                let on_screen =
+                    items_on_page(app.selected_book(), BOOKS_PER_SCREEN, self.books.len());
+                for index in on_screen {
+                    self.load_cover(index);
+                }
+                let books: Vec<(&str, Option<&Gray>)> = self
+                    .books
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| {
+                        (
+                            b.title.as_str(),
+                            self.covers.get(&i).and_then(|c| c.as_ref()),
+                        )
+                    })
+                    .collect();
+                if books.is_empty() {
                     draw_notice(
                         target,
                         &geometry,
                         &["No books on the card", "Copy .epub files to it"],
                     );
                 } else {
-                    draw_book_list(target, &geometry, &titles, app.selected_book());
+                    draw_book_list(target, &geometry, &books, app.selected_book());
                 }
                 if effect == Effect::OpenFailed {
                     draw_notice(target, &geometry, &["Could not open the book"]);

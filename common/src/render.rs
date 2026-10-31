@@ -21,6 +21,7 @@ use u8g2_fonts::{
     types::{FontColor, HorizontalAlignment, VerticalPosition},
 };
 
+use crate::image::{self, Gray};
 use crate::layout::{Draw, Layout, TextMetrics, wrap_text};
 
 /// Books shown on one screen of the list.
@@ -30,6 +31,8 @@ pub const ENTRIES_PER_SCREEN: usize = 6;
 
 const LIST_PADDING: u32 = 20;
 const LIST_BOX: u32 = 5;
+/// Gap around a cover in the book list, and the gap between it and the title.
+const COVER_GAP: u32 = 20;
 const CONTENTS_PADDING: u32 = 14;
 const CONTENTS_BOX: u32 = 3;
 /// Indent of a table of contents entry for each level of nesting, and the deepest level indented.
@@ -188,19 +191,29 @@ pub fn draw_page<D: DrawTarget<Color = Gray4>>(
     });
 }
 
-/// The screen of the list: `titles` of the books, the one at `selected` boxed, `BOOKS_PER_SCREEN`
-/// to a screen, starting at the screen that holds `selected`.
+/// The size a cover is drawn at in the book list, as the Arduino sketch has it: the cell less a gap
+/// above and below, two thirds as wide as high. A library scales the cover to this once.
+pub fn cover_size(geometry: &Geometry) -> (u32, u32) {
+    let cell = geometry.page_height() / BOOKS_PER_SCREEN as u32;
+    let height = cell.saturating_sub(2 * COVER_GAP);
+    (2 * height / 3, height)
+}
+
+/// The screen of the list: `books` as title and cover (already scaled to [`cover_size`]), the one
+/// at `selected` boxed, `BOOKS_PER_SCREEN` to a screen, starting at the screen that holds
+/// `selected`. A book with a cover has it at the left and its title in the rest of the row, one
+/// without shows only the title.
 pub fn draw_book_list<D: DrawTarget<Color = Gray4>>(
     target: &mut D,
     geometry: &Geometry,
-    titles: &[&str],
+    books: &[(&str, Option<&Gray>)],
     selected: usize,
 ) {
     draw_items(
         target,
         geometry,
-        titles.iter().map(|title| (*title, 0u8)),
-        titles.len(),
+        books.iter().map(|(title, cover)| (*title, 0u8, *cover)),
+        books.len(),
         selected,
         BOOKS_PER_SCREEN,
         LIST_PADDING,
@@ -220,7 +233,7 @@ pub fn draw_contents<'a, D: DrawTarget<Color = Gray4>>(
     draw_items(
         target,
         geometry,
-        entries,
+        entries.map(|(title, level)| (title, level, None)),
         count,
         selected,
         ENTRIES_PER_SCREEN,
@@ -233,7 +246,7 @@ pub fn draw_contents<'a, D: DrawTarget<Color = Gray4>>(
 fn draw_items<'a, D: DrawTarget<Color = Gray4>>(
     target: &mut D,
     geometry: &Geometry,
-    items: impl Iterator<Item = (&'a str, u8)>,
+    items: impl Iterator<Item = (&'a str, u8, Option<&'a Gray>)>,
     count: usize,
     selected: usize,
     per_screen: usize,
@@ -246,7 +259,7 @@ fn draw_items<'a, D: DrawTarget<Color = Gray4>>(
     let line = metrics.line_height();
     let text_height = cell.saturating_sub(padding * 2).max(line);
     let (left, top) = (geometry.margin_left as i32, geometry.margin_top as i32);
-    for (slot, (index, (title, level))) in items
+    for (slot, (index, (title, level, cover))) in items
         .enumerate()
         .skip(range.start)
         .take(range.len())
@@ -254,12 +267,31 @@ fn draw_items<'a, D: DrawTarget<Color = Gray4>>(
     {
         let y = top + (slot as u32 * cell) as i32;
         let indent = u32::from(level.min(MAX_INDENT_LEVEL)) * LEVEL_INDENT;
-        let x = left + (padding / 2 + indent) as i32;
-        let lines = wrap_text(
-            title,
-            &metrics,
-            geometry.page_width().saturating_sub(padding + indent),
-        );
+        // With a cover the title starts after it and gets the rest of the row.
+        let (title_x, title_width) = match cover {
+            Some(cover) => (
+                COVER_GAP + cover.width + COVER_GAP,
+                geometry
+                    .page_width()
+                    .saturating_sub(cover.width + 3 * COVER_GAP),
+            ),
+            None => (
+                padding / 2 + indent,
+                geometry.page_width().saturating_sub(padding + indent),
+            ),
+        };
+        let x = left + title_x as i32;
+        if let Some(cover) = cover {
+            image::draw(
+                target,
+                left + COVER_GAP as i32,
+                y + COVER_GAP as i32,
+                cover.width,
+                cover.height,
+                cover,
+            );
+        }
+        let lines = wrap_text(title, &metrics, title_width);
         // Centered in the cell, and never more lines than fit.
         let used = (lines.len() as u32 * line).min(text_height);
         let mut line_y = y + (cell.saturating_sub(used) / 2) as i32;

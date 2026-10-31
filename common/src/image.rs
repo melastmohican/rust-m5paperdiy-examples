@@ -210,6 +210,51 @@ pub fn quantize(value: u8, x: u32, y: u32) -> u8 {
     ((i32::from(value) + bayer - 8) >> 4).clamp(0, 15) as u8
 }
 
+/// The range of source pixels, of `from` in all, that destination pixel `dest` of `to` covers.
+fn source_range(dest: u32, from: u32, to: u32) -> (u32, u32) {
+    let start = (u64::from(dest) * u64::from(from) / u64::from(to)) as u32;
+    let end = (u64::from(dest + 1) * u64::from(from) / u64::from(to)) as u32;
+    (start, end.max(start + 1).min(from))
+}
+
+/// The average of the source pixels the destination pixel `(dx, dy)` of a `width` by `height` result covers.
+fn average(image: &Gray, dx: u32, dy: u32, width: u32, height: u32) -> u8 {
+    let (y0, y1) = source_range(dy, image.height, height);
+    let (x0, x1) = source_range(dx, image.width, width);
+    let mut sum = 0u32;
+    for sy in y0..y1 {
+        let line = sy as usize * image.width as usize;
+        sum += image.pixels[line + x0 as usize..line + x1 as usize]
+            .iter()
+            .map(|&v| u32::from(v))
+            .sum::<u32>();
+    }
+    (sum / ((y1 - y0) * (x1 - x0))) as u8
+}
+
+/// `image` scaled to `width` by `height`, each pixel the average of the pixels it covers, as
+/// [`draw`] does. `None` for a size of zero or an image whose pixels are missing. For a picture
+/// that is drawn again and again, like a cover in the book list, so the big one can be let go.
+pub fn scale(image: &Gray, width: u32, height: u32) -> Option<Gray> {
+    if width == 0 || height == 0 || image.width == 0 || image.height == 0 {
+        return None;
+    }
+    if image.pixels.len() < image.width as usize * image.height as usize {
+        return None;
+    }
+    let mut pixels = Vec::with_capacity(width as usize * height as usize);
+    for dy in 0..height {
+        for dx in 0..width {
+            pixels.push(average(image, dx, dy, width, height));
+        }
+    }
+    Some(Gray {
+        width,
+        height,
+        pixels,
+    })
+}
+
 /// Draws `image` scaled to `width` by `height` with its top left at `(x, y)` of `target`. A pixel of
 /// the result is the average of the source pixels it covers. What falls outside the target is cut.
 pub fn draw<D: DrawTarget<Color = Gray4>>(
@@ -232,24 +277,9 @@ pub fn draw<D: DrawTarget<Color = Gray4>>(
     let first_y = (-y).clamp(0, height as i32) as u32;
     let last_x = (size.width as i32 - x).clamp(0, width as i32) as u32;
     let last_y = (size.height as i32 - y).clamp(0, height as i32) as u32;
-    let source = |dest: u32, from: u32, to: u32| {
-        let start = (u64::from(dest) * u64::from(from) / u64::from(to)) as u32;
-        let end = (u64::from(dest + 1) * u64::from(from) / u64::from(to)) as u32;
-        (start, end.max(start + 1).min(from))
-    };
     for dy in first_y..last_y {
-        let (y0, y1) = source(dy, image.height, height);
         let row = (first_x..last_x).map(|dx| {
-            let (x0, x1) = source(dx, image.width, width);
-            let mut sum = 0u32;
-            for sy in y0..y1 {
-                let line = sy as usize * image.width as usize;
-                sum += image.pixels[line + x0 as usize..line + x1 as usize]
-                    .iter()
-                    .map(|&v| u32::from(v))
-                    .sum::<u32>();
-            }
-            let value = (sum / ((y1 - y0) * (x1 - x0))) as u8;
+            let value = average(image, dx, dy, width, height);
             let (px, py) = (x + dx as i32, y + dy as i32);
             let level = quantize(value, px as u32, py as u32);
             Pixel(Point::new(px, py), Gray4::new(level))
