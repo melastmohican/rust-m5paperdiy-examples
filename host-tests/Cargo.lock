@@ -192,6 +192,7 @@ name = "m5paperdiy-common"
 version = "0.1.0"
 dependencies = [
  "embedded-graphics",
+ "embedded-sdmmc",
  "paperpaw-platform",
  "paperpaw-xml",
  "paperpaw-zip",

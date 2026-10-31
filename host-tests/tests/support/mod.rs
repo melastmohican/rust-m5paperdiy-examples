@@ -77,3 +77,110 @@ pub fn fat32_image() -> Vec<u8> {
 pub fn dump_dir() -> Option<String> {
     std::env::var("UI_DUMP").ok().filter(|dir| !dir.is_empty())
 }
+
+/// A zip archive of `(name, content)` pairs. Entries named in `deflated` are compressed, the rest are
+/// stored, so both paths of the reader are covered.
+pub fn crc32(data: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+pub fn zip(files: &[(&str, &str)], deflated: &[&str]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut central = Vec::new();
+    for (name, content) in files {
+        let raw = content.as_bytes();
+        let (method, data) = if deflated.contains(name) {
+            (8u16, miniz_oxide::deflate::compress_to_vec(raw, 6))
+        } else {
+            (0u16, raw.to_vec())
+        };
+        let crc = crc32(raw);
+        let offset = out.len() as u32;
+        let mut common = Vec::new();
+        common.extend_from_slice(&20u16.to_le_bytes()); // version needed
+        common.extend_from_slice(&0u16.to_le_bytes()); // flags
+        common.extend_from_slice(&method.to_le_bytes());
+        common.extend_from_slice(&0u32.to_le_bytes()); // time and date
+        common.extend_from_slice(&crc.to_le_bytes());
+        common.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        common.extend_from_slice(&(raw.len() as u32).to_le_bytes());
+        common.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        common.extend_from_slice(&0u16.to_le_bytes()); // extra length
+        out.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+        out.extend_from_slice(&common);
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(&data);
+
+        central.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+        central.extend_from_slice(&20u16.to_le_bytes()); // version made by
+        central.extend_from_slice(&common);
+        central.extend_from_slice(&0u16.to_le_bytes()); // comment length
+        central.extend_from_slice(&0u16.to_le_bytes()); // disk number
+        central.extend_from_slice(&0u16.to_le_bytes()); // internal attributes
+        central.extend_from_slice(&0u32.to_le_bytes()); // external attributes
+        central.extend_from_slice(&offset.to_le_bytes());
+        central.extend_from_slice(name.as_bytes());
+    }
+    let central_offset = out.len() as u32;
+    out.extend_from_slice(&central);
+    out.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&(files.len() as u16).to_le_bytes());
+    out.extend_from_slice(&(files.len() as u16).to_le_bytes());
+    out.extend_from_slice(&(central.len() as u32).to_le_bytes());
+    out.extend_from_slice(&central_offset.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out
+}
+
+/// A small valid EPUB 2: `chapters` are `(title, body)` in reading order, each in its own XHTML file,
+/// all listed in the table of contents (an NCX).
+pub fn simple_epub(title: &str, chapters: &[(&str, &str)]) -> Vec<u8> {
+    let container = r#"<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>"#;
+    let mut manifest =
+        String::from(r#"<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>"#);
+    let mut spine = String::new();
+    let mut nav = String::new();
+    let mut files: Vec<(String, String)> = Vec::new();
+    for (i, (name, body)) in chapters.iter().enumerate() {
+        manifest.push_str(&format!(
+            r#"<item id="c{i}" href="ch{i}.xhtml" media-type="application/xhtml+xml"/>"#
+        ));
+        spine.push_str(&format!(r#"<itemref idref="c{i}"/>"#));
+        nav.push_str(&format!(
+            r#"<navPoint id="n{i}" playOrder="{}"><navLabel><text>{name}</text></navLabel><content src="ch{i}.xhtml"/></navPoint>"#,
+            i + 1
+        ));
+        files.push((
+            format!("OEBPS/ch{i}.xhtml"),
+            format!("<html><body>{body}</body></html>"),
+        ));
+    }
+    let opf = format!(
+        r#"<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{title}</dc:title></metadata><manifest>{manifest}</manifest><spine toc="ncx">{spine}</spine></package>"#
+    );
+    let ncx = format!(
+        r#"<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap>{nav}</navMap></ncx>"#
+    );
+    let mut entries: Vec<(&str, &str)> = vec![
+        ("META-INF/container.xml", container),
+        ("OEBPS/content.opf", &opf),
+        ("OEBPS/toc.ncx", &ncx),
+    ];
+    for (name, content) in &files {
+        entries.push((name, content));
+    }
+    zip(&entries, &["OEBPS/content.opf"])
+}

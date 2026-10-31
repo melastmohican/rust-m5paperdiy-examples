@@ -26,3 +26,5 @@ paperpaw-xml = "=0.5.0-beta.12"
 embedded-graphics = { version = "0.8.1", default-features = false }
 # The serif fonts the reader draws with. `u8g2-fonts` is `no_std`, like the other examples use it.
 u8g2-fonts = { version = "0.8.0", default-features = false, features = ["embedded_graphics_textstyle"] }
+# The FAT driver, generic over the block device. The default `log` feature only adds the `log` facade.
+embedded-sdmmc = { version = "0.10.0", default-features = false }
