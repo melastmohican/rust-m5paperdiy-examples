@@ -93,6 +93,72 @@ fn card(files: &[(&str, &[u8])]) -> Ram {
     ram
 }
 
+/// Gives the files of `ram`, made with `card` under short names, their long names. The root
+/// directory is written again as a Mac or Windows writes it: for each `(short name, long name, hidden)`
+/// the long name entries, last part first, then the short name entry the library made. `embedded-sdmmc`
+/// cannot write long names itself.
+fn give_long_names(ram: &Ram, files: &[(&str, &str, bool)]) {
+    // The first root directory sector: partition at 2048, 32 reserved, two FATs of 624 sectors.
+    const ROOT: usize = (2048 + 32 + 2 * 624) * 512;
+    let mut image = ram.0.borrow_mut();
+    let old: Vec<[u8; 32]> = image[ROOT..ROOT + 512]
+        .chunks_exact(32)
+        .map(|entry| entry.try_into().unwrap())
+        .collect();
+    let mut out = Vec::new();
+    for (short, long, hidden) in files {
+        let (name, ext) = short.split_once('.').unwrap();
+        let mut raw = [b' '; 11];
+        raw[..name.len()].copy_from_slice(name.as_bytes());
+        raw[8..8 + ext.len()].copy_from_slice(ext.as_bytes());
+        let mut entry = *old
+            .iter()
+            .find(|e| e[..11] == raw)
+            .unwrap_or_else(|| panic!("{short} is not in the directory"));
+        if *hidden {
+            entry[11] |= 0x02;
+        }
+        let csum = raw
+            .iter()
+            .fold(0u8, |sum, b| sum.rotate_right(1).wrapping_add(*b));
+        let mut units: Vec<u16> = long.encode_utf16().collect();
+        if units.len() % 13 != 0 {
+            units.push(0);
+        }
+        while units.len() % 13 != 0 {
+            units.push(0xFFFF);
+        }
+        let parts = units.len() / 13;
+        for part in (0..parts).rev() {
+            let mut lfn = [0u8; 32];
+            lfn[0] = part as u8 + 1 + if part == parts - 1 { 0x40 } else { 0 };
+            lfn[11] = 0x0F;
+            lfn[13] = csum;
+            let chunk = &units[part * 13..part * 13 + 13];
+            for (i, unit) in chunk.iter().enumerate() {
+                let at = match i {
+                    0..=4 => 1 + i * 2,
+                    5..=10 => 14 + (i - 5) * 2,
+                    _ => 28 + (i - 11) * 2,
+                };
+                lfn[at..at + 2].copy_from_slice(&unit.to_le_bytes());
+            }
+            out.push(lfn);
+        }
+        out.push(entry);
+    }
+    assert!(out.len() <= 16, "the directory is one sector");
+    image[ROOT..ROOT + 512].fill(0);
+    for (i, entry) in out.iter().enumerate() {
+        image[ROOT + i * 32..ROOT + i * 32 + 32].copy_from_slice(entry);
+    }
+}
+
+fn fixture_book(name: &str) -> Vec<u8> {
+    let path = format!("{}/tests/fixtures/books/{name}", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
 /// The screen in memory, 0 black to 15 white.
 struct Canvas {
     pixels: Vec<u8>,
@@ -422,6 +488,11 @@ fn a_real_card_image_lists_its_books_by_long_name() {
     assert!(!names.is_empty(), "no .epub file found by long name");
     assert!(names.iter().all(|n| is_epub_name(n)));
     let library = SdLibrary::new(storage, G).ok().unwrap();
+    assert_eq!(
+        library.books().len(),
+        names.len(),
+        "a book was found by the scan and then could not be opened"
+    );
     for book in library.books() {
         println!("book: {:?} ({})", book.title, book.path);
         assert!(!book.title.is_empty());
@@ -462,4 +533,52 @@ fn a_real_card_image_lists_its_books_by_long_name() {
         );
         assert!(forward > 1 && back >= forward);
     }
+}
+
+/// `embedded-sdmmc` 0.10.0 finds a file by its long name with a matcher that gets stuck when an
+/// earlier name looks like the end of the one searched for (every `._name.epub` a Mac leaves ends
+/// in "b"): the files after it are then "not found". The card of the user lost "journey.epub" so,
+/// the image of a Mac lost "gulliver.epub". Books are opened by the short name the scan found.
+#[test]
+fn every_book_opens_whatever_long_names_come_before_it() {
+    let (journey, gulliver, alice) = (
+        fixture_book("journey.epub"),
+        fixture_book("gulliver.epub"),
+        fixture_book("alice.epub"),
+    );
+    let junk = [0u8; 16];
+    let ram = card(&[
+        ("JOURNE~1.EPU", &journey),
+        ("_JOURN~3.EPU", &junk),
+        ("GULLIV~4.EPU", &gulliver),
+        ("_GULLI~6.EPU", &junk),
+        ("ALIC~7.EPU", &alice),
+        ("_ALIC~9.EPU", &junk),
+    ]);
+    give_long_names(
+        &ram,
+        &[
+            ("JOURNE~1.EPU", "journey.epub", false),
+            ("_JOURN~3.EPU", "._journey.epub", true),
+            ("GULLIV~4.EPU", "gulliver.epub", false),
+            ("_GULLI~6.EPU", "._gulliver.epub", true),
+            ("ALIC~7.EPU", "alice.epub", false),
+            ("_ALIC~9.EPU", "._alice.epub", true),
+        ],
+    );
+    let storage = SdStorage::new(ram, Time).ok().expect("a FAT volume");
+    assert_eq!(
+        storage.epub_files().ok().unwrap(),
+        ["journey.epub", "gulliver.epub", "alice.epub"]
+    );
+    let library = SdLibrary::new(storage, G).ok().unwrap();
+    let titles: Vec<&str> = library.books().iter().map(|b| b.title.as_str()).collect();
+    assert_eq!(
+        titles,
+        [
+            "A Journey to the Centre of the Earth",
+            "Alice's Adventures in Wonderland",
+            "Gulliver's Travels into Several Remote Nations of the World"
+        ]
+    );
 }

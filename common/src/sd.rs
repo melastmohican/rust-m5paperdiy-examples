@@ -13,8 +13,8 @@ use core::ops::ControlFlow;
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use embedded_sdmmc::{
-    BlockDevice, LfnBuffer, Mode, RawDirectory, RawFile, RawVolume, TimeSource, VolumeIdx,
-    VolumeManager,
+    BlockDevice, LfnBuffer, Mode, RawDirectory, RawFile, RawVolume, ShortFileName, TimeSource,
+    VolumeIdx, VolumeManager,
 };
 use paperpaw_platform::storage::{DirEntry, Storage, StorageError};
 
@@ -47,6 +47,8 @@ pub struct SdStorage<D: BlockDevice, T: TimeSource> {
     volume: RawVolume,
     root: RawDirectory,
     open: RefCell<Option<(String, RawFile)>>,
+    /// The short name of each long name the scan has met, so a file is opened without scanning again.
+    short_names: RefCell<BTreeMap<String, ShortFileName>>,
 }
 
 impl<D: BlockDevice, T: TimeSource> SdStorage<D, T> {
@@ -64,7 +66,37 @@ impl<D: BlockDevice, T: TimeSource> SdStorage<D, T> {
             volume,
             root,
             open: RefCell::new(None),
+            short_names: RefCell::new(BTreeMap::new()),
         })
+    }
+
+    /// The short name of the file called `long` in the root directory, from the directory scan.
+    ///
+    /// `embedded-sdmmc` 0.10.0 has `open_long_name_file_in_dir`, but its matcher gets stuck when an
+    /// earlier long name looks like the end of the one searched for (the `._name.epub` files a Mac
+    /// leaves all end in "b"), and then reports every later file as not found. The scan does not
+    /// have that problem, so files are opened by the short name it finds.
+    fn short_name_of(&self, long: &str) -> Option<ShortFileName> {
+        if let Some(short) = self.short_names.borrow().get(long) {
+            return Some(*short);
+        }
+        let mut found = None;
+        let mut buffer = [0u8; 255 * 3];
+        let mut lfn = LfnBuffer::new(&mut buffer);
+        self.manager
+            .iterate_dir_lfn(self.root, &mut lfn, |entry, name| {
+                if entry.attributes.is_directory() || name != Some(long) {
+                    return ControlFlow::Continue(());
+                }
+                found = Some(entry.name);
+                ControlFlow::Break(())
+            })
+            .ok()?;
+        let short = found?;
+        self.short_names
+            .borrow_mut()
+            .insert(String::from(long), short);
+        Some(short)
     }
 
     /// Runs `f` on the open file for `path`, opening it first when another one is open.
@@ -78,14 +110,16 @@ impl<D: BlockDevice, T: TimeSource> SdStorage<D, T> {
             if let Some((_, file)) = open.take() {
                 let _ = self.manager.close_file(file);
             }
-            let file = self
-                .manager
-                .open_long_name_file_in_dir(self.root, path, Mode::ReadOnly)
-                .or_else(|_| {
-                    self.manager
-                        .open_file_in_dir(self.root, path, Mode::ReadOnly)
-                })
-                .map_err(|_| StorageError::NotFound)?;
+            // A name with no long form (8.3 only) is its own short name.
+            let file = match self.short_name_of(path) {
+                Some(short) => self
+                    .manager
+                    .open_file_in_dir(self.root, short, Mode::ReadOnly),
+                None => self
+                    .manager
+                    .open_file_in_dir(self.root, path, Mode::ReadOnly),
+            }
+            .map_err(|_| StorageError::NotFound)?;
             *open = Some((String::from(path), file));
         }
         let Some((_, file)) = open.as_ref() else {
