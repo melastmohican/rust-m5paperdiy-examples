@@ -24,3 +24,6 @@ target/
 
 # Ignore .DS_Store file in mac
 **/.DS_Store
+
+# Local cargo override that points at the epdpi checkout (see AGENTS.md)
+/.cargo/

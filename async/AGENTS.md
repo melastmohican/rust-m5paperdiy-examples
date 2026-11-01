@@ -1,6 +1,6 @@
 # async/
 
-Async twin of `../blocking`, for the `epdpi` workspace in `../../epdpi`. Model it on
+Async twin of `../blocking`, for the crates `epdpi` and `epdpi-esp` (0.1 from crates.io). Model it on
 `../../rust-reterminal-e1002-examples`.
 
 - Own project, never a member of the blocking examples workspace (feature unification would turn

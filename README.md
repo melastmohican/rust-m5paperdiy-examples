@@ -17,9 +17,9 @@ The `bringup` branch holds the bring-up diagnostics for the `epdpi` library, des
 
 ## Run
 
-Needs the `esp` Rust toolchain (`espup`), `espflash`, and a checkout of
-[`epdpi`](https://github.com/melastmohican/epdpi) next to this repository (`../epdpi`). Build and run
-from the folder of the build you want, always with `--release`:
+Needs the `esp` Rust toolchain (`espup`) and `espflash`. The drivers are the published crates
+[`epdpi`](https://crates.io/crates/epdpi) and [`epdpi-esp`](https://crates.io/crates/epdpi-esp), so cargo fetches
+them. Build and run from the folder of the build you want, always with `--release`:
 
 ```text
 cd blocking && cargo run --release --example display_demo

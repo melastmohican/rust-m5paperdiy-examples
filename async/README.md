@@ -11,8 +11,8 @@ Build and run from this folder (`cd async`).
 
 ## Run
 
-Needs the `esp` Rust toolchain and `espflash`. `epdpi` is a checkout next to this repository (`../../epdpi`). Always
-build with `--release`.
+Needs the `esp` Rust toolchain and `espflash`. `epdpi` and `epdpi-esp` are the published crates (0.1, from crates.io).
+Always build with `--release`.
 
 ```text
 cargo run --release --example user_demo

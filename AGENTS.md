@@ -1,7 +1,7 @@
 # rust-m5paperdiy-examples
 
-Examples for the M5Stack PaperDIY (ESP32-S3, ED047TC1) on the `epdpi` workspace, which is a checkout next to
-this repository (`../epdpi`). One repository, four folders, each its own Cargo project.
+Examples for the M5Stack PaperDIY (ESP32-S3, ED047TC1) on the published crates `epdpi` and `epdpi-esp` (0.1, from
+crates.io; the source is `github.com/melastmohican/epdpi`). One repository, four folders, each its own Cargo project.
 
 - `blocking/`: the examples on the blocking API. Its `AGENTS.md` has the rules, naming and commands.
 - `async/`: the async twin of every port, same names. Its `AGENTS.md` has its own rules.
@@ -28,7 +28,32 @@ this repository (`../epdpi`). One repository, four folders, each its own Cargo p
   `blocking/` and `async/`, and the `async_copy` test fails when they differ.
 - READMEs describe what exists now, not planned work. Planned work lives in `../epdpi/.agents/notes/backlog.md`.
 - Docs read like a person wrote them: no em dashes, no "it's not X, it's Y".
-- Push `epdpi` first when both change: the CI here clones `epdpi` from `main`.
+- The examples build against the published `epdpi` and `epdpi-esp`, so a change in `epdpi` shows up here only after
+  a release. To try an unreleased change on the board, use the local override below. After every release of
+  `epdpi` these examples are brought to the released version: step 9 of the `epdpi-release` skill in that repo.
+
+## Trying an unreleased `epdpi` here
+
+`epdpi` is a checkout next to this repository (`../epdpi`) when you work on it. Point the examples at it
+without touching any committed file:
+
+- `blocking/` and `async/`: create `.cargo/config.toml` in the root of this repository. It is git-ignored, and
+  cargo merges it into the folders below it.
+
+  ```toml
+  [patch.crates-io]
+  epdpi = { path = "../epdpi/epdpi" }
+  epdpi-esp = { path = "../epdpi/epdpi-esp" }
+  ```
+
+- Host tests: `EPDPI_PATH=../epdpi host-tests/run.sh` (and with `--no-default-features`). `run.sh` starts cargo
+  from a neutral directory, so the file above does not reach it.
+- Check what is used: `cargo tree -p epdpi` in `blocking/` prints `epdpi v0.1.0 (/path/to/epdpi/epdpi)` with the
+  override and no path without it.
+- **`Cargo.lock` changes while an override is on**: cargo writes the path form of `epdpi` into it. Before you commit,
+  delete `.cargo/config.toml`, run `cargo tree -p epdpi` in `blocking/` and `async/`, and check that
+  `git diff --stat -- '*/Cargo.lock'` shows only changes you meant. A lockfile committed in the path form breaks
+  the CI, which has no `epdpi` checkout.
 
 ## Checks (match CI)
 

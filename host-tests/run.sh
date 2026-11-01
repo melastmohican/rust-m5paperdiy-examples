@@ -6,7 +6,13 @@
 #   ./run.sh                     all tests
 #   ./run.sh card                tests whose name contains "card"
 #   UI_DUMP=/some/dir ./run.sh   also writes the rendered pages and boxes as .pgm and .raw files
+#   EPDPI_PATH=../../epdpi ./run.sh   builds against a local checkout of epdpi (the folder that holds the
+#                                     `epdpi` and `epdpi-esp` crates) instead of the one on crates.io
 set -eu
 DIR=$(cd "$(dirname "$0")" && pwd)
+if [ -n "${EPDPI_PATH:-}" ]; then
+  EPDPI_ABS=$(cd "$EPDPI_PATH" && pwd)
+  set -- --config "patch.crates-io.epdpi.path='$EPDPI_ABS/epdpi'" "$@"
+fi
 cd "${TMPDIR:-/tmp}"
 exec cargo test --manifest-path "$DIR/Cargo.toml" "$@"

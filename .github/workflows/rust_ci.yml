@@ -48,9 +48,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-      - name: Fetch sibling epdpi checkout
-        # Both crates depend on `../../epdpi` by path until the crate is published.
-        run: git clone --depth 1 https://github.com/melastmohican/epdpi ../epdpi
       - name: Setup Rust
         uses: esp-rs/xtensa-toolchain@v1.5
         with:
@@ -79,9 +76,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-      - name: Fetch sibling epdpi checkout
-        # host-tests depends on ../../epdpi by path.
-        run: git clone --depth 1 https://github.com/melastmohican/epdpi ../epdpi
       - name: Setup Rust
         # Host toolchain, not the esp one: run.sh starts cargo from a neutral directory, so the
         # crates' rust-toolchain.toml and .cargo/config.toml do not apply.

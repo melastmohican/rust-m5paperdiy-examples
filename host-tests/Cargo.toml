@@ -16,7 +16,7 @@ blocking = ["epdpi/blocking", "m5paperdiy-common/blocking"]
 [dependencies]
 # Checkout next to this repository, like the example crates. `default-features = false` so the `blocking`
 # feature above decides the mode, with the graphics feature on either way.
-epdpi = { path = "../../epdpi/epdpi", default-features = false, features = ["graphics"] }
+epdpi = { version = "0.1", default-features = false, features = ["graphics"] }
 m5paperdiy-common = { path = "../common", default-features = false }
 embedded-graphics = "0.8.1"
 embedded-sdmmc = "0.10.0"
