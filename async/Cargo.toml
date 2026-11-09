@@ -25,8 +25,8 @@ embedded-hal       = "1.0.0"
 # Sibling checkout, a workspace. Async API on purpose: `default-features = false` leaves out the
 # `blocking` feature, which is why this is its own project and not a member of
 # the blocking crate. Cargo would unify the two modes inside one workspace.
-epdpi     = { version = "0.1", default-features = false, features = ["defmt", "graphics"] }
-epdpi-esp = { version = "0.1", default-features = false, features = ["esp32s3", "defmt"] }
+epdpi     = { version = "0.2", default-features = false, features = ["defmt", "graphics"] }
+epdpi-esp = { version = "0.2", default-features = false, features = ["esp32s3", "defmt"] }
 esp-radio = { version = "0.18.0", features = ["wifi", "esp32s3", "unstable", "defmt"] }
 
 [dev-dependencies]

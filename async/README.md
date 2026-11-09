@@ -11,7 +11,7 @@ Build and run from this folder (`cd async`).
 
 ## Run
 
-Needs the `esp` Rust toolchain and `espflash`. `epdpi` and `epdpi-esp` are the published crates (0.1, from crates.io).
+Needs the `esp` Rust toolchain and `espflash`. `epdpi` and `epdpi-esp` are the published crates (0.2, from crates.io).
 Always build with `--release`.
 
 ```text

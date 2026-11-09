@@ -126,9 +126,9 @@ dependencies = [
 
 [[package]]
 name = "epdpi"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c5eb9f9147b6dcfa30f589c7dcf37dc599e7b282837e5cefb812c70d4b52151"
+checksum = "b5d6d00b4097e334a557110f3514d2df7ce0b3c7a453491ed3ff68e6aa4a90a5"
 dependencies = [
  "embedded-graphics-core",
  "embedded-hal",
