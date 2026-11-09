@@ -26,6 +26,10 @@ cd blocking && cargo run --release --example display_demo
 cd async    && cargo run --release --example display_demo
 ```
 
+### Download mode
+
+Press and hold the power button on the bottom of the device for about 2 seconds. Release it when the red LED starts blinking. The device is then in download mode and ready to be flashed. Until then a board that was switched off or is asleep shows no USB serial port on the host.
+
 ## Tests
 
 ```text

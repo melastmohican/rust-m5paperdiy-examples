@@ -18,6 +18,8 @@ Always build with `--release`.
 cargo run --release --example user_demo
 ```
 
+If `espflash` finds no serial port, put the board in download mode: press and hold the power button on the bottom for about 2 seconds and release it when the red LED starts blinking.
+
 | Example | What it does |
 | :--- | :--- |
 | `epdpi_lcd_ramp` | The `LcdBus` async path: a 16-gray `M5Quality` ramp, to compare with the blocking example on the `bringup` branch of `rust-m5paperdiy-examples` |

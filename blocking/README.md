@@ -87,6 +87,7 @@ These cost time to find. They are recorded here so the next person does not repe
 | Symptom | Likely cause | Next step |
 | :--- | :--- | :--- |
 | Panic `memory allocation of 4 bytes failed` when the radio starts | two `esp-alloc` versions in the build | `cargo tree -d \| grep esp-alloc`, make them one |
+| `espflash` says there is no serial port, or the host lists no USB device for the board | the board is off, asleep or not in download mode | press and hold the power button on the bottom for about 2 seconds, release it when the red LED starts blinking, then flash |
 | `user_demo` shows the logo and the board goes dark | you held A and B for 7 seconds, which is the power-off | press PWR to start it again |
 
 More symptoms, from bringing up a board, are in [bringup.md](../bringup.md).

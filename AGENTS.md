@@ -26,6 +26,7 @@ crates.io; the source is `github.com/melastmohican/epdpi`). One repository, four
   --no-default-features` runs async. Run both before pushing.
 - New hardware-free code goes in `common/`. The older `mod ui` blocks in the examples are the same text in
   `blocking/` and `async/`, and the `async_copy` test fails when they differ.
+- Flashing: a board with no USB serial port is off, asleep or not in download mode. Press and hold the power button on the bottom for about 2 seconds, release it when the red LED starts blinking, then run `cargo run --release --example <name>` (flash plus monitor). Check `ls /dev/cu.*` for the port before you flash, and make sure it is this board and not another ESP32.
 - READMEs describe what exists now, not planned work. Planned work lives in `../epdpi/.agents/notes/backlog.md`.
 - Docs read like a person wrote them: no em dashes, no "it's not X, it's Y".
 - The examples build against the published `epdpi` and `epdpi-esp`, so a change in `epdpi` shows up here only after
