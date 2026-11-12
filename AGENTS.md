@@ -1,6 +1,6 @@
 # rust-m5paperdiy-examples
 
-Examples for the M5Stack PaperDIY (ESP32-S3, ED047TC1) on the published crates `epdpi` and `epdpi-esp` (0.2, from
+Examples for the M5Stack PaperDIY (ESP32-S3, ED047TC1) on the published crates `epdpi` and `epdpi-esp` (0.3, from
 crates.io; the source is `github.com/melastmohican/epdpi`). One repository, four folders, each its own Cargo project.
 
 - `blocking/`: the examples on the blocking API. Its `AGENTS.md` has the rules, naming and commands.
@@ -49,7 +49,7 @@ without touching any committed file:
 
 - Host tests: `EPDPI_PATH=../epdpi host-tests/run.sh` (and with `--no-default-features`). `run.sh` starts cargo
   from a neutral directory, so the file above does not reach it.
-- Check what is used: `cargo tree -p epdpi` in `blocking/` prints `epdpi v0.2.0 (/path/to/epdpi/epdpi)` with the
+- Check what is used: `cargo tree -p epdpi` in `blocking/` prints `epdpi v0.3.0 (/path/to/epdpi/epdpi)` with the
   override and no path without it.
 - **`Cargo.lock` changes while an override is on**: cargo writes the path form of `epdpi` into it. Before you commit,
   delete `.cargo/config.toml`, run `cargo tree -p epdpi` in `blocking/` and `async/`, and check that

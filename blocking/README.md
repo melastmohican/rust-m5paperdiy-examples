@@ -45,7 +45,7 @@ an example alone needs (SD card, font crates, image decoders) goes in `[dev-depe
 
 Requirements: the `esp` toolchain from `espup` (`rustup toolchain list` should show `esp`)
 and `espflash`. Always build with `--release`: the PSRAM heap and the bus are far too slow in
-a dev build. `epdpi` and `epdpi-esp` are the published crates (0.2, from crates.io). To try an unreleased change, see `AGENTS.md` in the root of this repository.
+a dev build. `epdpi` and `epdpi-esp` are the published crates (0.3, from crates.io). To try an unreleased change, see `AGENTS.md` in the root of this repository.
 
 ## Board reference
 
