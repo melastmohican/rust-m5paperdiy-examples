@@ -18,7 +18,8 @@
 //! ## Expected
 //!
 //! - The log prints `ramp <name>: refresh done in N ms`.
-//! - 16 bars from black to white and a label under them naming the build, for the photo.
+//! - 16 bars from black to white, 17 bold tick marks under them at the bar edges and a label naming the
+//!   build, for the photo. `M5Quality` draws a white refresh first, like the M5GFX sketch.
 #![no_std]
 #![no_main]
 
@@ -58,8 +59,27 @@ fn show<B: EpdParallelBus>(bus: B, mode: RefreshMode, name: &str, label: &str) -
             .into_styled(PrimitiveStyle::with_fill(Gray4::new(level)))
             .draw(&mut fb);
     }
+    // Tick marks under the bars, 6 px wide and 16 tall, centred on the bar edges (clamped at the
+    // panel edges), so the photo script finds the bars.
+    for k in 0..=16i32 {
+        let x = (k * 60 - 3).clamp(0, 954);
+        let _ = Rectangle::new(Point::new(x, 482), Size::new(6, 16))
+            .into_styled(PrimitiveStyle::with_fill(Gray4::BLACK))
+            .draw(&mut fb);
+    }
     let style = MonoTextStyle::new(&FONT_10X20, Gray4::BLACK);
     let _ = Text::new(label, Point::new(40, 520), style).draw(&mut fb);
+
+    // As the M5GFX sketch does: a white background through the same waveform first. `M5Quality`
+    // erases from the record, not from the glass, so a ramp left on it would show through.
+    if mode == RefreshMode::M5Quality {
+        let mut white_mem = vec![0xFFu8; Ed047tc1::FB_BYTES];
+        if let Ok(white) = EpdFrameBuffer::<Ed047tc1>::new(&mut white_mem)
+            && display.refresh(&white, mode).is_err()
+        {
+            error!("white refresh failed");
+        }
+    }
 
     let start = Instant::now();
     match display.refresh(&fb, mode) {
